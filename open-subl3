@@ -1,0 +1,16 @@
+#!/usr/bin/env bash
+
+## If running as root, don't allow it!
+#   Sublime Text automatically asks for sudo password when editing non-user files.
+#   This avoids having a completely separated sublime-text-3 config dir.
+[[ $EUID -eq 0 ]] && echo "Run as user you jackass! :)" && exit
+
+sublInstancesWorkspaces=$(wmctrl -l | \grep ' - Sublime Text' | tr -s ' ' | cut -d' ' -f2 | xargs)
+currentWorkspace=$(wmctrl -d | \grep '*' | tr -s ' ' | cut -d' ' -f1)
+
+# Se não houver uma instância do sublime na workspace atual, abrir uma nova janela
+if [[ ${sublInstancesWorkspaces#*$currentWorkspace} == ${sublInstancesWorkspaces} ]]; then
+    subl3 -n "$@"
+else
+    subl3 "$@"
+fi

@@ -1,0 +1,41 @@
+#!/usr/bin/env bash
+
+# Colocar no launch options do steam para cada jogo:
+# gnome-terminal -e "steam-open %command%"
+
+# Se quiser setar atalhos customizados com xbindkeys e xte:
+# Coloque o arquvo de configuração chamado 'custom_shortcuts' no $PWD deste script,
+# ou seja, na pasta do binário provavelmente (verifique com o echo abaixo).
+
+# Suprime mensagens de erro do Steam (e do script!)
+exec 2> /dev/null
+
+# Color echo
+end='\E[0m'; bold='\E[1m'; fred='\E[31m'; fgre='\E[32m'; fyel='\E[33m'; fblu='\E[34m'; fvio='\E[35m'; fcya='\E[36m'; fwhi='\E[37m'
+
+# Finaliza graciosamente
+function cleanup() {
+    echo -e "${fyellow}Terminando xbindkeys..."
+    killall xbindkeys
+    echo -e "${fgre}${bold}O jogo foi terminado. Aperte qualquer tecla para sair${end}"
+    read
+    exit
+}
+
+echo -e "${fgre}Rodando em ${bold}$PWD${end}"
+
+if [[ -f "$PWD/custom_shortcuts" ]]; then
+    echo -e "${fgre}Carregando atalhos customizados...${end}"
+    xbindkeys -f "$PWD/custom_shortcuts"
+    trap cleanup TERM INT
+fi
+
+echo -e "${fyel}Definindo prioridade de CPU e I/O (requer root)${end}"
+sudo ionice -c 1 -p $$
+#sudo renice -15  -p $$
+i8kfan 2 2
+echo -e "${end}"
+
+echo -e "${fgre}${bold}Iniciando jogo...${end}"
+DRI_PRIME=1 "$@"
+cleanup

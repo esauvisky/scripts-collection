@@ -1,0 +1,10 @@
+#!/bin/bash
+
+string="lyrics ""$(spotify-now -i "%artist %title")"
+string=${string//&/}
+
+if [[ -n $string ]]; then
+    google-chrome-stable "http://www.google.com/search?hl=en&q=${string}"
+else
+    exit
+fi
