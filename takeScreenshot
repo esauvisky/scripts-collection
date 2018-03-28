@@ -1,62 +1,13 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -o errexit; set -o errtrace; set -o pipefail # Exit on errors
+# Uncomment line below for debugging:
+PS4=$'+ $(tput sgr0)$(tput setaf 4)DEBUG ${FUNCNAME[0]:+${FUNCNAME[0]}}$(tput bold)[$(tput setaf 6)${LINENO}$(tput setaf 4)]: $(tput sgr0)'; set -o xtrace
+__deps=( "sleep" "gnome-screenshot" "xclip" "gimp" )
+for dep in ${__deps[@]}; do hash $dep >& /dev/null || (echo "$dep was not found. Please install it and try again."  && exit 1); done
 
-# Author: Emiliano Sauvisky
-# Name: takeScreenshot
-# Description: Takes a screenshot of the entire screen with scrot and edits or upload it.
-#              If user chooses to edit the screenshot and it's original file is overwritten (CTRL+S),
-#              it's uploaded nevertheless. Upload link also goes straight to clipboard.
-
-# Changelog
-# 3-nov-2016: removido scrot, porque o wayland nao suporta que apps capturem a janela root
-#             comentadas opções de upload porque não são mais usadas
-
-
-# Checking requirements
-# soft[0]="scrot"
-soft[0]="gnome-screenshot"
-soft[1]="gimp"
-soft[2]="emiliano-imgupload"
-soft[3]="xclip"
-soft[4]="zenity"
-for check in ${soft[@]}; do hash $check &>/dev/null || { echo >&2 "ERROR: $check doesn't exists in $PATH."; exit 1; }; done
-# Done
-
-option=$(zenity --list --title="Opções de captura de tela" --text="O que deseja fazer?" --hide-header --column= \
-    "Editar PNG 100 no GIMP" \
-    "Editar JPG 85 no GIMP" ) #"Upload JPG 85" )
-echo ":$option:"
-case $option in
-    "Editar PNG 100 no GIMP")
-        _oldmd5=$(md5sum "$file" | sed 's/ .*//')
-        gimp "$file"
-        _newmd5=$(md5sum "$file" | sed 's/ .*//')
-        #if [[ $_oldmd5 != $_newmd5 ]]; then zenity --question --text="Deseja fazer upload da imagem?" && upload=true; fi
-        ;;
-    "Editar JPG 85 no GIMP")
-        convert "$file" -quality 85 "${file%.png}".jpg
-        rm "$file"
-        file="${file%.png}".jpg
-        _oldmd5=$(md5sum "$file" | sed 's/ .*//')
-        gimp "$file"
-        _newmd5=$(md5sum "$file" | sed 's/ .*//')
-        #if [[ $_oldmd5 != $_newmd5 ]]; then zenity --question --text="Deseja fazer upload da imagem?" && upload=true; fi
-        ;;
-    "Upload JPG 85")
-        convert "$file" -quality 85 "${file%.png}".jpg
-        rm "$file"
-        file="${file%.png}".jpg
-        du -s "$file"
-        upload=true
-        ;;
-    *)
-        exit 1
-        ;;
-esac
-
-if [[ $upload ]]; then
-    links=$(emiliano-imgupload "$file")
-    echo -n "$links" | xclip -selection clipboard
-    zenity --info --no-wrap --text="Upload link copied to clipboard."
-else
-    echo -n "$file" | xclip -selection clipboard
-fi
+name=`date +%H-%M-%S-%N`.png
+sleep 0.2
+gnome-screenshot -f "/tmp/$name"
+file="/tmp/$name"
+echo -n "$file" | xclip -selection clipboard
+gimp "$file"
