@@ -1,0 +1,41 @@
+#!/bin/bash
+
+# Check dependencies
+soft[0]="curl"
+soft[1]="xclip"
+soft[2]="perl"
+for check in ${soft[@]}; do if [[ ! -e "/usr/bin/$check" ]]; then echo "$check doesn't exists. Can't execute program."; exit 1;	fi; done
+
+CHARS=$(python2 -c 'print u"\u0091\u0092\u00a0\u200E".encode("utf8")')
+
+cd /tmp
+
+clipboard=$(xclip -o -selection clipboard | sed 's/['"$CHARS"']//g')
+primary=$(xclip -o -selection primary| sed 's/['"$CHARS"']//g')
+
+if [[ ($(echo ${primary} | grep -c '^https*://.*$') -eq 1 || $(echo ${primary} | grep -c '^www\..*$') -eq 1) ]]; then
+    # Se houver um link na seleção primária, utilizá-lo
+    url=${primary}
+elif [[ ($(echo ${clipboard} | grep -c '^https*://.*$') -eq 1 || $(echo ${clipboard} | grep -c '^www\..*$') -eq 1) ]]; then
+    # Senão, usar a área de transferência
+    url=${clipboard}
+else
+    # Se nenhum dos dois for um link, sair
+    exit 1
+fi
+
+filename=${url%%\?*}
+filename=${filename##*/}
+
+# Limpa o clipboard
+echo -n | xclip -selection clipboard
+
+# Baixa o arquivo
+#echo "Wget URL is: $url"
+#echo "Filename is: $filename"
+wget "$url" -O "$filename" >/dev/null 2>&1 #| egrep '’ saved |no newer than local file ' | sed 's/^..*‘\(..*\)’..*$/\1/'
+touch "$filename"
+
+out="$PWD/$filename"
+
+echo -n "$out" | xclip -selection clipboard

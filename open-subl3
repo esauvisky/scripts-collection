@@ -6,7 +6,8 @@
 [[ $EUID -eq 0 ]] && echo "Run as user you jackass! :)" && exit
 
 sublInstancesWorkspaces=$(wmctrl -l | \grep ' - Sublime Text' | tr -s ' ' | cut -d' ' -f2 | xargs)
-currentWorkspace=$(wmctrl -d | \grep '*' | tr -s ' ' | cut -d' ' -f1)
+#currentWorkspace=$(wmctrl -d | \grep '*' | tr -s ' ' | cut -d' ' -f1)
+currentWorkspace=$(xdotool get_desktop)
 
 # Se não houver uma instância do sublime na workspace atual, abrir uma nova janela
 if [[ ${sublInstancesWorkspaces#*$currentWorkspace} == ${sublInstancesWorkspaces} ]]; then

@@ -1,10 +1,21 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -o errexit; set -o errtrace; #set -o pipefail # Exit on errors
+# Uncomment line below for debugging:
+PS4=$'+ $(tput sgr0)$(tput setaf 4)DEBUG ${FUNCNAME[0]:+${FUNCNAME[0]}}$(tput bold)[$(tput setaf 6)${LINENO}$(tput setaf 4)]: $(tput sgr0)'; set -o xtrace
+__deps=( "spotify-now" "xdg-open" )
+for dep in ${__deps[@]}; do hash $dep >& /dev/null || (echo "$dep was not found. Please install it and try again." && exit 1); done
 
-string="lyrics ""$(spotify-now -i "%artist %title")"
+_AGENT="Mozilla/5.0 (iPhone; U; CPU like Mac OS X; en) AppleWebKit/420+ (KHTML, like Gecko) Version/3.0 Mobile/1A543a Safari/419.3"
+
+string="$(spotify-now -i "%artist %title")"
 string=${string//&/}
+string="lyrics "$string
+string=${string// /+}
 
 if [[ -n $string ]]; then
-    google-chrome-stable "http://www.google.com/search?hl=en&q=${string}"
+    #wget -qO- "http://www.google.com/search?hl=en&q=${string}" -U "$_AGENT" > test
+    url=$(wget -qO- "http://www.google.com/search?hl=en&q=${string}" -U "$_AGENT" | sed 's|<|\n<|g' | \grep 'url?q' -m1 | sed 's|..*q=\(..*\)&amp;sa=U..*|\1|')
+    xdg-open "$url"
 else
     exit
 fi

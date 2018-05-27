@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
 set -o errexit; set -o errtrace; set -o pipefail # Exit on errors
 # Uncomment line below for debugging:
+set -x
 PS4=$'+ $(tput sgr0)$(tput setaf 4)DEBUG ${FUNCNAME[0]:+${FUNCNAME[0]}}$(tput bold)[$(tput setaf 6)${LINENO}$(tput setaf 4)]: $(tput sgr0)'; set -o xtrace
-__deps=( "sleep" "gnome-screenshot" "xclip" "gimp" )
+__deps=( "gnome-screenshot" "xclip" "gimp" )
 for dep in ${__deps[@]}; do hash $dep >& /dev/null || (echo "$dep was not found. Please install it and try again."  && exit 1); done
 
 name=`date +%H-%M-%S-%N`.png
 sleep 0.2
 gnome-screenshot -f "/tmp/$name"
 file="/tmp/$name"
-echo -n "$file" | xclip -selection clipboard
 gimp "$file"
+echo -n "$file" | xclip -selection clipboard
