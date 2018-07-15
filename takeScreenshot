@@ -7,7 +7,7 @@ __deps=( "gnome-screenshot" "xclip" "gimp" )
 for dep in ${__deps[@]}; do hash $dep >& /dev/null || (echo "$dep was not found. Please install it and try again."  && exit 1); done
 
 name=`date +%H-%M-%S-%N`.png
-sleep 0.2
+sleep 0.8
 gnome-screenshot -f "/tmp/$name"
 file="/tmp/$name"
 gimp "$file"
