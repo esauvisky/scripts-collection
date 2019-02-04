@@ -1,0 +1,100 @@
+#!/bin/bash
+
+# Author: Unknown
+# Name: ytdown
+# Description: Downloads videos from youtube.
+
+# Mensagem de erro padrão.
+MENSAGEM_USO="
+Uso: $(basename "$0") ID [Título] [-w]
+
+-w Transformar para WideScreen
+"
+
+# Flags de atividades agendadas
+avi=0
+mp3=0
+mpeg=0
+
+
+# Verifica se algum argumento foi digitado.
+if [ -z "$1" ] ; then
+        echo "$MENSAGEM_USO"
+        exit 0
+fi
+
+#Define Variáveis
+ID="$1"
+URL="http://br.youtube.com/watch?v=${1/*=}"
+
+
+if [ -z "$URL" ] ; then echo "URL ou ID não foi informado."; exit 1; fi
+
+
+#########################
+#			#
+#	BAIXANDO	#
+#			#
+#########################
+
+# Título do Vídeo
+if [ -z "$2" ]; then
+	wide="false"
+	i=0
+	TITULO="video$i"
+	while [ -e "$TITULO.mp4" ]; do
+		i++
+		TITULO="video$i"
+	done
+elif [ "$2" == "-w" ]; then
+	wide="true"
+	i=0
+	TITULO="video$i"
+	while [ -e "$TITULO.mp4" ]; do
+		i++
+		TITULO="video$i"
+	done
+else
+	if [ "$3" == "-w" ]; then
+		wide="true"
+		TITULO=$2
+	else
+		wide="false"
+		TITULO=$2
+	fi
+fi		
+
+# Endereço para baixá-lo.
+GETADDRS=$( wget -qO - "$URL" | grep -oE 'video_id=.*&t=[^\"&]*' | head -1 )
+DOWNLOAD="http://br.youtube.com/get_video?$GETADDRS"
+
+# Se já existir o arquivo, continue o download; do contrário baixe-o.
+if [ -f "$TITULO.mp4"  ]
+then
+   wget -cO "$TITULO.mp4" "$DOWNLOAD&fmt=18"
+else
+   wget  -O "$TITULO.mp4" "$DOWNLOAD&fmt=18"
+fi
+
+
+
+#########################
+#			#
+#	CONVERTENDO	#
+#			#
+#########################
+#if [ $wide == "true" ]; then
+#	echo "Inciando conversão para AVI WIDE"; ffmpeg -i "$TITULO.flv" -acodec libmp3lame -aspect '16:9' "$TITULO.avi"
+#else
+#	echo "Inciando conversão para AVI"; ffmpeg -i "$TITULO.flv" -acodec libmp3lame "$TITULO.avi"
+#fi
+
+#echo "Movendo para a Lixeira"
+#if [[ -e "./$TITULO.avi" ]]; then
+#	mv "./$TITULO.flv" ~/.local/share/Trash/files
+#else
+#	echo "Um erro ocorreu."
+#	echo "O arquivo FLV não foi deletado"
+#	exit 1
+#fi
+

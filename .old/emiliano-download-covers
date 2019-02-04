@@ -1,0 +1,92 @@
+#!/bin/bash
+
+# Author: Emiliano Sauvisky
+# Name: emiliano-download-covers
+# Description: Downloads covers from google images.
+
+# Check dependencies
+soft[0]="emiliano-google-images"
+soft[1]="wget"
+for check in ${soft[@]}; do if [[ ! -e "/usr/bin/$check" ]]; then echo "$check doesn't exists. Can't execute program."; exit 1;	fi; done
+# Done dependencies
+
+CFG_INTERACTIVE=true
+if [[ $1 == "-h" || $1 == "" ]]; then
+	echo "Usage: emiliano-download-covers [-n] <artists_folders>"
+	echo
+	echo "Options"
+	echo "-n: don't use interactive method."
+	exit
+elif [[ $1 == "-n" ]]; then
+	echo "Using non-interactive method."
+	CFG_INTERACTIVE=false
+	shift
+fi
+
+for (( i = 1; i <= $#; i++ )); do
+	if [[ -d "${!i}" ]]; then
+		cd "${!i}"
+			BANDA=$(echo "$PWD" | sed 's/.*\///')
+			for ALBUM in *; do
+				cd "$ALBUM"
+					# tira o ano e outros caracteres da string ALBUM
+					YEAR=$(echo "$ALBUM" | sed  's/ - .*$//')
+					ALBUM=$(echo "$ALBUM" | sed 's/[0-9][0-9][0-9][0-9] - //')
+					if [[ $(\ls -AlR | grep -c '.jpg') -eq 0 ]]; then
+						# se album for igual a banda adicionar ano e remover album
+						if [[ $BANDA == $ALBUM ]]; then
+							SEARCH_STRING='"'"$BANDA"'" '"$YEAR"
+						# se album não tiver espaços, adicionar ano
+						elif [[ $(echo "$ALBUM" | \grep -c ' ') -eq 0 ]]; then
+							SEARCH_STRING='"'"$BANDA"'" '"$YEAR "'"'"$ALBUM"'"'
+						else
+							SEARCH_STRING='"'"$BANDA"'" '"$ALBUM"
+						fi
+						echo "Search string: $SEARCH_STRING"
+						ALLLINKS=$(emiliano-google-images -lt "$SEARCH_STRING")
+						ISOK=false
+						# loop pelos links
+						echo "$ALLLINKS" | while read LINK; do
+							if [[ $ISOK = false ]]; then
+
+								echo -e "\tDownloading ${LINK}"
+								wget -q "${LINK}" -O ./temp -T 5 --tries 1 \
+								  -U "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 \
+								  (KHTML, like Gecko) Chrome/44.0.2403.155 Safari/537.36"
+
+								if [[ -s "./temp" ]]; then
+									# converte para jpg
+									convert ./temp -resize 300x300 /tmp/Folder.jpg
+									rm ./temp
+									if [[ $CFG_INTERACTIVE = true ]]; then
+										eog /tmp/Folder.jpg >/dev/null 2>&1 & disown
+										_t=0; while [[ $_t -eq 0 ]]; do _t=$(wmctrl -l | grep -c 'Folder.jpg'); done
+										if ! zenity --question --text="${BANDA//&/And}: ${ALBUM//&/And}\nIs this ok?" --ok-label="Yes" --cancel-label="No" >/dev/null 2>&1; then
+											killall -15 eog
+											rm /tmp/Folder.jpg
+											ISOK=false
+										else
+											killall -15 eog
+											mv /tmp/Folder.jpg ./Folder.jpg
+											ISOK=true
+										fi
+									else
+										ISOK=true
+									fi
+								else
+									echo -e "\tERROR: Not Found."
+									ISOK=false
+								fi
+							fi
+						done
+						# se existirem pastas dentro da pasta de álbums (pastas de múltiplos CDS), copiar jpg para dentro
+						for DIRFILES in ./*; do
+							if [[ -d "$DIRFILES" ]]; then DELETE=true; cp Folder.jpg ./"$DIRFILES"; fi
+						done
+					fi
+					[[ $DELETE = true ]] && rm Folder.jpg && DELETE=false
+				cd ..
+			done
+		cd ..
+	fi
+done

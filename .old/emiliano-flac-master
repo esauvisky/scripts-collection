@@ -1,0 +1,168 @@
+#!/bin/bash
+## Author: Emiliano Sauvisky
+## Name: emiliano-flac-master
+## Description: Splits and/or converts several types of music albums into separate FLAC files.
+
+# Checking requirements
+soft[0]="flac"
+soft[1]="cuebreakpoints"
+soft[2]="shnsplit"
+soft[3]="cuetag.sh"
+soft[4]="lltag"
+soft[5]="gvfs-trash"
+soft[6]="mac"
+soft[7]="bchunk"
+soft[8]="mplayer"
+for check in ${soft[@]}; do hash $check &>/dev/null || { echo >&2 "ERROR: $check doesn't exists in $PATH."; exit 1; }; done
+# Done
+
+# Colored Echo
+end='\E[0m'; bold='\E[1m'; fred='\E[31m'; fgre='\E[32m'; fyel='\E[33m'; fblu='\E[34m'; fvio='\E[35m'; fcya='\E[36m'; fwhi='\E[37m'
+
+function usage {
+	echo "Usage"
+	echo -e "For jointed albums:\t $0 CUEFILE.cue ALBUMFILE.ext"
+	echo -e "For splitted albums:\t $0 TRACKFILES.ext"
+	echo -e "\t(You can use wildcards for splitted albums, like *.ape)"
+}
+
+function delete_and_clean {
+	_DELDIR="DELETE-${PWD/*\//}"
+	mkdir "$_DELDIR"
+	for (( d = 1; d <= $#; d++ )); do
+		mv "${!d}" "$_DELDIR"
+	done
+	gvfs-trash "$_DELDIR"
+}
+
+function error_exit {
+	echo -e ${bold}${fred}"FATAL ERROR: $1"${end}
+	if [[ -n $2 ]]; then
+		echo -e ${bold}${fred}"$2"${end}
+	else	
+		echo -e ${bold}${fred}"Check last output for more information."${end}
+	fi
+	exit 1
+}
+
+if [[ $# = 0 ]]; then usage; exit 1; fi
+a=0; for (( n = 1; n <= $#; n++ )); do
+	_FILE=${!n}
+	_EXT=${_FILE/*./}
+	case $_EXT in
+		cue)
+			CUEFILE=${!n}
+			;;
+		*)
+			TRACKS[a]="${!n}"
+			let a++ 
+			;;
+	esac
+done
+
+# loop throught all other arguments
+#for arg in "${args[@]}"; do
+#	echo "$arg"
+#done
+
+if [[ -n $CUEFILE ]]; then # For jointed albums
+	ALBUMFILE=${TRACKS[0]}
+	ALBUMEXT=${ALBUMFILE/*./}
+	case $ALBUMEXT in
+		ape)
+			echo -e ${bold}${fyel}"Converting APE to WAV..."${end}
+				mac "$ALBUMFILE" "${ALBUMFILE%.*}".wav -d -v
+			echo -e ${bold}${fyel}"Converting WAV to FLAC"${end}
+				[[ -s "${ALBUMFILE%.*}".wav ]] \
+				&& flac --best "${ALBUMFILE%.*}".wav \
+				|| error_exit "WAV file not found."
+			echo -e ${bold}${fyel}"Splitting single FLAC into multiple files..."${end}
+				[[ -s "${ALBUMFILE%.*}".flac ]] \
+				&& cuebreakpoints "$CUEFILE" | shnsplit -o flac "${ALBUMFILE%.*}".flac \
+				|| error_exit "FLAC file not found." "There's a workaround! Open the file with audacity, split it manually, save it as a '24bit unsigned microsoft wav file' and convert it with flac."
+			echo -e ${bold}${fyel}"Tagging splitted FLAC files..."${end}
+				[[ -s split-track01.flac ]] \
+				&& cuetag.sh "$CUEFILE" split-track*.flac \
+				|| error_exit "Splitted FLAC files not found."
+			echo -e ${bold}${fyel}"Renaming FLAC files to pattern..."${end}
+				lltag --yes --no-tagging --rename '%n - %t' $(\ls split-track*.flac)
+			echo -e ${bold}${fblu}"Cleaning files..."${end}
+				delete_and_clean "$ALBUMFILE" "${ALBUMFILE%.*}".wav "$CUEFILE" "${ALBUMFILE%.*}".flac
+			;;
+		flac)
+			echo -e ${bold}${fyel}"Splitting FLAC into multiple files..."${end}
+				cuebreakpoints "$CUEFILE" | shnsplit -o flac "$ALBUMFILE"
+				[[ ! -s split-track01.flac ]] && cuebreakpoints "$CUEFILE" | sed s/$/0/ | shnsplit -o flac "$ALBUMFILE"
+			echo -e ${bold}${fyel}"Tagging splitted FLAC files..."${end}
+				[[ -s split-track01.flac ]] \
+				&& cuetag.sh "$CUEFILE" split-track*.flac \
+				|| error_exit "Splitted FLAC files not found."
+			echo -e ${bold}${fyel}"Renaming FLAC files to pattern..."${end}
+				lltag --yes --no-tagging --rename '%n - %t' $(\ls split-track*.flac)
+			echo -e ${bold}${fblu}"Cleaning files..."${end}
+				delete_and_clean "$ALBUMFILE" "$CUEFILE"
+			;;
+		bin)	# For DTS BIN albums
+			echo -e ${bold}${fyel}"Splitting BIN to multipĺe CDR files..."${end}
+				bchunk -v "$ALBUMFILE" "$CUEFILE" split-track
+			echo -e ${bold}${fyel}"Converting CDR files into WAV files...."${end}
+				[[ -s split-track01.cdr ]] \
+				&& ( for _CDRFILE in *.cdr; do
+					     mplayer -ao pcm:file="${_CDRFILE%.cdr}.wav" "$_CDRFILE"
+					 done ) \
+				|| error_exit "Splitted CDR files not found."
+			echo -e ${bold}${fyel}"Converting splitted WAV files into FLAC files..."${end}
+				[[ -s split-track01.wav ]] \
+				&& flac --best split-track*.wav \
+				|| error_exit "Splitted WAV files not found."
+			echo -e ${bold}${fyel}"Tagging FLAC files..."${end}
+			cuetag.sh "$CUEFILE" split-track*.flac
+			echo -e ${bold}${fyel}"Renaming FLAC files to pattern..."${end}
+			lltag --yes --no-tagging --rename '%n - %t' $(\ls split-track*.flac)
+			echo -e ${bold}${fblu}"Cleaning files..."${end}
+			delete_and_clean "$ALBUMFILE" "$CUEFILE" split-track*.wav split-track*.cdr
+			;;
+		*)		# For any other extension. Uses ffmpeg.
+			if [[ "${ALBUMFILE/*./}" != "wav" ]]; then
+				echo -e ${bold}${fyel}"Converting "$(echo ${ALBUMFILE/*./} | tr '[:lower:]' '[:upper:]')" to WAV"${end}
+				ffmpeg -i "$ALBUMFILE" "${ALBUMFILE%.*}".wav
+			fi
+			echo -e ${bold}${fyel}"Converting WAV to FLAC"${end}
+			flac --best "${ALBUMFILE%.*}".wav
+			echo -e ${bold}${fyel}"Splitting FLAC into multiple files..."${end}
+			cuebreakpoints "$CUEFILE" | shnsplit -o flac "${ALBUMFILE%.*}".flac
+			echo -e ${bold}${fyel}"Tagging FLAC files..."${end}
+			cuetag "$CUEFILE" split-track*.flac
+			echo -e ${bold}${fyel}"Renaming FLAC files to pattern..."${end}
+			lltag --yes --no-tagging --rename '%n - %t' $(\ls split-track*.flac)
+			echo -e ${bold}${fblu}"Cleaning files..."${end}
+			delete_and_clean "$ALBUMFILE" "${ALBUMFILE%.*}.wav" "$CUEFILE" "${ALBUMFILE%.*}".flac
+			;;
+	esac
+else # For splitted albums
+	for TRACKFILE in "${TRACKS[@]}"; do
+		TRACKEXT=${TRACKFILE/*./}
+		case $TRACKEXT in
+			ape)
+				echo -e ${bold}${fyel}"Converting $TRACKFILE to WAV..."${end}
+					mac "$TRACKFILE" "${TRACKFILE%.*}".wav -d -v
+				echo -e ${bold}${fyel}"Converting ${TRACKFILE%.*}.wav to FLAC"${end}
+					[[ -s "${TRACKFILE%.*}".wav ]] \
+					&& flac --best "${TRACKFILE%.*}".wav \
+					|| error_exit "WAV file not found."
+				echo -e ${bold}${fblu}"Cleaning files..."${end}
+					delete_and_clean "$TRACKFILE" "${TRACKFILE%.*}".wav
+				;;
+			*)
+				echo -e ${bold}${fyel}"Converting $TRACKFILE to WAV..."${end}
+					ffmpeg -i "$TRACKFILE" "${TRACKFILE%.*}".wav
+				echo -e ${bold}${fyel}"Converting ${TRACKFILE%.*}.wav to FLAC"${end}
+					[[ -s "${TRACKFILE%.*}".wav ]] \
+					&& flac --best "${TRACKFILE%.*}".wav \
+					|| error_exit "WAV file not found."
+				echo -e ${bold}${fblu}"Cleaning files..."${end}
+					delete_and_clean "$TRACKFILE" "${TRACKFILE%.*}".wav
+				;;
+		esac
+	done
+fi

@@ -1,0 +1,78 @@
+#!/bin/bash
+
+# Author: Emiliano Sauvisky
+# Name: emiliano-imgupload
+# Description: Upĺoads an local image to an image hoster. See help (-h) for more information.
+
+# Check dependencies
+soft[0]="curl"
+for check in ${soft[@]}; do if [[ ! -e "/usr/bin/$check" ]]; then echo "$check doesn't exists. Can't execute program."; exit 1;	fi; done
+# Done dependencies
+
+if [[ $@ == "" || $1 == "-h" ]]; then
+	echo "Usage: $0 [-h] [-is|-iu|-fi|-gg] [files]"
+	echo
+	echo "Options:"
+	echo -e $'\t'"\033[1m-iu:\033[0m ""uploads to imgur.com (default)"
+	echo -e $'\t'"\033[1m-fi:\033[0m ""uploads to funkyimg.com"
+	echo -e $'\t'"\033[1m-gp:\033[0m ""uploads to Google's Picasa (user required)"
+	echo -e $'\t'"\033[1m-is:\030[0m ""uploads to imageshack.us (BROKEN)"
+	echo -e $'\t'"\033[1m-h:\033[0m ""shows this help page"
+	echo
+	echo -e "\tOptions must be written before file paths."
+	exit
+fi
+
+case $1 in
+	-is)
+		CFG_HOST='imageshack'
+		shift
+		;;
+	-iu)
+		CFG_HOST='imgur'
+		shift
+		;;
+	-fi)
+		CFG_HOST='funkyimg'
+		shift
+		;;
+	-gp)
+		CFG_HOST='picasa'
+		shift
+		;;
+	*)
+		CFG_HOST='imgur'
+		;;
+esac
+
+for (( i = 1; i <= $#; i++ )); do
+	if [[ -e "${!i}" ]]; then
+		image="${!i}"
+		mimetype=`file -b --mime-type $image`
+		case $CFG_HOST in
+			'imageshack')
+				curl -H Expect: -F "fileupload=@$image;type=$mimetype" -F xml=yes -s "http://post.imageshack.us/" | \grep image_link | \grep -o  http[^\<]*
+				;;
+			'imgur')
+				curl -s -# -F "image"=@"$image" -F "key"="4907fcd89e761c6b07eeb8292d5a9b2a" http://imgur.com/api/upload.xml | \grep -Eo '<[a-z_]+>http[^<]+' | \grep 'original' | sed 's/.*>//'
+				;;
+			'funkyimg')
+				curl -s -F "uptype=file"  -F "file_0=@$image" -F "maxNumber=1"  -F "maxId=0"  -F "addInfo=on"  -F "addInfoType=res"  -F "wmPos=TOPRIGHT"  -F "wmLayout=2"  -F "wmFontSize=14"  -F "wmTransparency=50" 'http://funkyimg.com/up.php' | \grep -B 1 'Direct link to image' | \grep 'http' | cut -d '"' -f2
+				;;
+			'picasa')
+				username=bololimao
+				password=2901_ggl
+				auth_key=$( curl -s https://www.google.com/accounts/ClientLogin -d Email="$username"@gmail.com -d Passwd="$password" -d accountType=GOOGLE -d source=Google-cURL-Example -d service=lh2 | awk -F\= '/^Auth=/{print $2}' )
+				album_xml=$( curl -s --header "Authorization: GoogleLogin auth=$auth_key" "http://picasaweb.google.com/data/feed/api/user/default" | sed 's/.*<link rel='"'"'self'"'"' type='"'"'application\/atom+xml'"'"' href='"'"'\([^'"'"']*\).*/\1/' | sed 's/entry/feed/' )
+				link=$(curl -s --request POST --data-binary "@$image" --header "Slug: ${image##*/}" --header "Content-Type: $mimetype" --header "Authorization: GoogleLogin auth=$auth_key" "$album_xml" | sed "s/.*<media:content url='//" | sed "s/'.*//")
+				echo "$link"
+				;;
+			*)
+				echo "An error ocurred: no HOST defined."
+				exit 1
+				;;
+		esac
+	else
+		echo "File $file doesn't exists. Skipping..."
+	fi
+done

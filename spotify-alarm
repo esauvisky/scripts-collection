@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+set -o errexit; set -o errtrace; set -o pipefail # Exit on errors
+# Uncomment line below for debugging:
+#PS4=$'+ $(tput sgr0)$(tput setaf 4)DEBUG ${FUNCNAME[0]:+${FUNCNAME[0]}}$(tput bold)[$(tput setaf 6)${LINENO}$(tput setaf 4)]: $(tput sgr0)'; set -o xtrace
+__deps=( "pactl" "bc" "playerctl" "spotify" )
+for dep in ${__deps[@]}; do hash $dep >& /dev/null || (echo "$dep was not found. Please install it and try again." && exit 1); done
+
+
+VOLUME_FROM=15
+VOLUME_TO=70
+FULL_RAISE_TIME=300 # in seconds, 300 means raise from 25% to 75% in 5 minutes
+
+# sets base volume
+pactl set-sink-volume 0 25%
+
+# run spotify and start playing
+if ! playerctl play; then
+    spotify & disown
+    sleep 5
+    playerctl play
+fi
+# rewinds last song
+playerctl previous
+
+steps=$(($VOLUME_TO-$VOLUME_FROM))
+sleep_time=$(echo "scale=2; $FULL_RAISE_TIME/$steps" | bc)
+# increases volume gradually
+for (( vol = $VOLUME_FROM; vol <= $VOLUME_TO; vol++ )); do
+    pactl set-sink-volume 0 ${vol}%
+    sleep ${sleep_time}s
+done

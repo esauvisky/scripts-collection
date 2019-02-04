@@ -1,0 +1,96 @@
+#!/bin/bash
+
+# Author: Emiliano Sauvisky
+# Name: emiliano-google-images
+# Description: Grab images links from google images search.
+
+# Check dependencies
+soft[0]="wget"
+for check in ${soft[@]}; do if [[ ! -e "/usr/bin/$check" ]]; then echo "$check doesn't exists. Can't execute program."; exit 1;	fi; done
+# Done dependencies
+
+ARGn=1
+for ARG in "$@"; do
+	ARGn=$(($ARGn+1)) # next argument number
+	case $ARG in
+	-m | --mobile)
+		ISMOBILE=1
+		;;
+	--help)
+		echo "Usage: emiliano-google-images [-h] [-m] [-v] [-w width -h height] 'search terms'"
+		echo
+		echo "Geral Options"
+		echo "'search terms': should be single quoted (or be carefull with escaping characters."
+		echo "-m | --mobile: uses mobile version of Google Images (faster, but not 100% reliable)."
+		echo "-v | --verbose: prints more output, not just links (for debugging)"
+		echo "--help: prints this help message."
+		echo
+		echo "Search Options"
+		echo "-w: sets fixed width within results (must be used with -h)."
+		echo "-h: sets fixed height within results (must be used with -w)."
+		echo
+		exit
+		;;
+	-w)
+		s_WIDTH=${!ARGn}
+		;;
+	-h)
+		s_HEIGHT=${!ARGn}
+		;;
+	-lt)
+		_LARGERTHAN=1
+		;;
+	-v)
+		vbs=1
+		;;
+	-*)
+		echo "Unrecognized option $ARG."
+		exit 1
+		;;
+	*)
+		_SEARCH=$(echo "$ARG" | sed 's/ /+/g')
+		;;
+	esac
+done
+
+if [[ ! $_SEARCH ]]; then
+	echo "No search terms found."
+	exit 1
+fi
+
+if [[ $ISMOBILE ]]; then
+	_AGENT="Mozilla/5.0 (iPhone; U; CPU like Mac OS X; en) AppleWebKit/420+ (KHTML, like Gecko) Version/3.0 Mobile/1A543a Safari/419.3"
+	if [[ $vbs ]]; then echo "Using UserAgent string: '$_AGENT'."; fi
+else
+	#_AGENT="Firefox on Ubuntu Gutsy: Mozilla/5.0 (X11; U; Linux i686; en-US; rv:1.8.1.14) Gecko/20080418 Ubuntu/7.10 (gutsy) Firefox/2.0.0.14"
+	_AGENT="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/44.0.2403.155 Safari/537.36"
+	if [[ $vbs ]]; then echo "Using UserAgent string: '$_AGENT'."; fi
+fi
+
+# downloads google images results page
+if [[ $_LARGERTHAN ]]; then
+	_URI="https://www.google.com/search?q=$_SEARCH&hl=en&tbm=isch&source=lnt&tbs=isz:lt,islt:qsvga"
+elif [[ ! $s_WIDTH ]]; then
+	_URI="https://www.google.com/search?hl=en&q=$_SEARCH&tbm=isch&gws_rd=ssl"
+else
+	_URI="https://www.google.com/search?q=$_SEARCH&hl=en&tbm=isch&source=lnt&tbs=isz:ex,iszw:$s_WIDTH,iszh:$s_HEIGHT"
+fi
+if [[ $vbs ]]; then echo "Fetching '$_URI'."; fi
+_RESULTS=$(wget -qO- "$_URI" -U "$_AGENT")
+
+#echo $_RESULTS > results.html
+
+# get images links
+if [[ $ISMOBILE ]]; then
+	_RESULTS=$(echo "$_RESULTS" | \sed 's/imgurl/\nimgurl/g' | \grep 'imgurl' | \sed 's/imgurl=//' | \sed 's/\&amp\;.*//')
+else
+	_RESULTS=$(echo "$_RESULTS" | \sed 's/imgurl/\nimgurl/g' | \grep 'imgurl' | \sed 's/imgurl=//' | \sed 's/\&amp\;.*//')
+fi
+
+_RESULTS=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.unquote(sys.argv[1]))' "$_RESULTS")
+_RESULTS=$(python3 -c 'import sys, urllib.parse; print(urllib.parse.unquote(sys.argv[1]))' "$_RESULTS")
+
+if [[ $vbs ]]; then echo; echo "--- RESULTS ---"; fi
+	printf -v _RESULTS "%b" "${_RESULTS//\%/\x}"
+	echo -e "$_RESULTS"
+exit 0

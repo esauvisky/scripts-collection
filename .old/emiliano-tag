@@ -1,0 +1,124 @@
+#!/bin/bash
+
+# Author: Emiliano Sauvisky
+# Name: emiliano-tag
+# Description: Tags MP3 files which follow a directory standard:
+#			   ./Artist_Name/Year - Album_Title/Track_Number - Title.mp3
+
+# Check dependencies
+soft[0]="mid3v2"
+soft[1]="apetag"
+for check in ${soft[@]}; do hash $check &>/dev/null || { echo >&2 "ERROR: $check doesn't exists in $PATH."; exit 1; }; done
+# Done
+
+
+
+MNUM=0
+DEBUG=false
+
+if [[ $# < 1 ]]; then
+	echo 'Usage: '
+	echo '"emiliano-tag [-v] Folder1 [Folder2] [Folder3]" etc.'
+	exit 1
+elif [[ $1 == "-v" ]]; then
+	DEBUG=true
+	$DEBUG && echo "Using verbose (debug) mode..."
+	shift
+elif [[ $1 == "-d" ]]; then
+	DELETE='yes'
+	echo "Deleting tags before writing for loops"
+elif [[ $1 == "-nd" ]]; then
+	DELETE='no'
+	echo "Not deleting tags before writing"
+fi
+if [[ $DELETE == "" ]]; then
+	echo -n "Would you like to delete tags before writing them? [n]: "
+	read YN
+	YN=$(echo $YN | sed 's/Y/y/')
+	if [[ $YN != "y" ]]; then
+		DELETE="no"
+		$DEBUG && echo "Replacing tags..."
+	else
+		DELETE="yes"
+		$DEBUG && echo "Deleting tags..."
+	fi
+fi
+TIME0=$(date +%s)
+
+for (( i = 1; i <= $#; i++ )); do
+	for ARTIST in "${!i}"; do
+		if [[ $(echo "$ARTIST" | grep -c '\/') == 1 ]]; then
+			ARTIST=$(echo "$ARTIST" | sed 's/\/$//')
+			$DEBUG && echo "DEBUG: $ARTIST (remove slash)"
+		fi
+		if [ -d "$ARTIST" ]; then
+			$DEBUG && echo "DEBUG: cd ARTIST "$ARTIST""
+			cd "$ARTIST"
+			for ALBUM in *; do
+				if [ -d "$ALBUM" ]; then
+					YEAR=$(echo "$ALBUM" | sed 's/ \- .*//')
+					$DEBUG && echo "DEBUG: YEAR=$YEAR"
+					$DEBUG && echo "DEBUG: cd ALBUM "$ALBUM""
+					cd "$ALBUM"
+					if [ -e "CD 1" ]; then
+						for CD in *; do
+							DISCNUM=$(echo "$CD" | sed 's/CD //')
+							$DEBUG && echo "DEBUG: cd CD "$CD""
+							cd "$CD"
+							for SONGFILE in *.mp3; do
+								TRACK=$(echo "$SONGFILE" | sed 's/ \- .*//')
+								TITLE=$(echo "$SONGFILE" | sed 's/^[0-9][0-9] - //' | sed 's/\.mp3//')
+								if [ $DELETE == "yes" ]; then
+									$DEBUG && echo "Deleting tags in $SONGFILE."
+									mid3v2 -D "$SONGFILE"  > .inpout
+									apetag --delete "$SONGFILE" > .inpout
+									rm .inpout
+								fi
+								$DEBUG && echo "Writing tags in $SONGFILE"
+								$DEBUG && echo "DEBUG: mid3v2 -a $ARTIST -A $ALBUM -t $TITLE -T $TRACK -y $YEAR $SONGFILE"
+								mid3v2 -a "$ARTIST" -A "$ALBUM" -t "$TITLE" -T "$TRACK" -y "$YEAR" --TPOS "$DISCNUM" "$SONGFILE" > .inpout
+								rm .inpout
+								MNUM=$(($MNUM+1))
+							done
+							$DEBUG && echo "DEBUG: back cd $CD/.."
+							cd ..
+						done
+						$DEBUG && echo "DEBUG: back cd $ALBUM/.."
+						cd ..
+					else
+						for SONGFILE in *.mp3; do
+							TRACK=$(echo "$SONGFILE" | sed 's/ \- .*//')
+							TITLE=$(echo "$SONGFILE" | sed 's/^[0-9][0-9] - //' | sed 's/\.mp3//')
+							if [ $DELETE == "yes" ]; then
+								$DEBUG && echo "Deleting tags in $SONGFILE."
+								mid3v2 -D "$SONGFILE"  > .inpout
+								apetag --delete "$SONGFILE"  > .inpout
+								rm .inpout
+							fi
+							$DEBUG && echo "Writing tags in $SONGFILE"
+							$DEBUG && echo "DEBUG: mid3v2 -a $ARTIST -A $ALBUM -t $TITLE -T $TRACK -y $YEAR $SONGFILE"
+							mid3v2 -a "$ARTIST" -A "$ALBUM" -t "$TITLE" -T "$TRACK" -y "$YEAR" "$SONGFILE" > .inpout
+							rm .inpout
+							MNUM=$(($MNUM+1))
+						done
+						$DEBUG && echo "DEBUG: back cd $ALBUM/.."
+						cd ..
+					fi
+				fi
+			done
+			$DEBUG && echo "DEBUG: back cd $ARTIST/.."
+			cd ..
+		fi
+	done
+done
+
+
+TIME1=$(date +%s)
+TTIME=$(($TIME1-$TIME0))
+ATIME=$(echo "scale=4; $TTIME/$MNUM" | bc)
+
+echo
+echo "STATISTICS:"
+echo "Number of musics: $MNUM"
+echo "Total time: "$TTIME"s"
+echo "Average time: "$ATIME"s"

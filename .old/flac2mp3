@@ -1,0 +1,31 @@
+#!/bin/bash
+
+# Author: Emiliano Sauvisky
+# Name: flac2mp3
+# Description: Converts all flac files in $PWD into MP3 at maximum quality.
+
+# Check dependencies
+soft[0]="flac"
+soft[1]="lame"
+soft[2]="gvfs-trash"
+for check in ${soft[@]}; do if [[ ! -e "/usr/bin/$check" ]]; then echo "$check doesn't exists. Can't execute program."; exit 1;	fi; done
+# Done dependencies
+
+if [[ -e *.FLAC ]]; then
+	rename 's/\.FLAC/\.flac/' *
+fi
+fname=$(echo $PWD | sed 's/.*\///')
+
+nice -n 11 flac -F -d *.flac
+for f in *.wav; do nice -n 11 lame --preset insane --noreplaygain -q 2 "$f" "${f%.wav}.mp3"; done
+rm *.wav 
+
+if [[ $(ls | \grep -c '.mp3') != 0 ]]; then
+	mkdir "FLAC-$fname"
+	mv *.flac "FLAC-$fname"
+	gvfs-trash "FLAC-$fname"
+	exit 0
+else
+	echo "ERROR!"
+	exit 1
+fi

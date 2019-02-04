@@ -1,0 +1,213 @@
+#!/bin/bash
+
+# Author: Emiliano Sauvisky
+# Name: uppercasefix
+# Description: Rename music files in current dir to follow certain rules.
+
+# Check dependencies
+soft[0]="convert"
+for check in ${soft[@]}; do if [[ ! -e "/usr/bin/$check" ]]; then echo "$check doesn't exists. Can't execute program."; exit 1;	fi; done
+# Done dependencies
+
+w1=0
+w2=0
+w3=0
+w4=0
+f=0
+
+capitalize_first ()
+{
+  string0="$@"
+  firstchar=${string0:0:1}
+  string1=${string0:1}
+  FirstChar=`echo "$firstchar" | tr a-z A-Z`
+  expU="$FirstChar$string1"
+}
+
+check_u ()
+{
+if [[ $u == "á" ]]; then
+	u="Á"
+elif [[ $u == "é" ]]; then
+	u="É"
+elif [[ $u == "í" ]]; then
+	u="Í"
+elif [[ $u == "ó" ]]; then
+	u="Ó"
+elif [[ $u == "ú" ]]; then
+	u="Ú"
+elif [[ $u == "à" ]]; then
+	u="À"
+elif [[ $u == "è" ]]; then
+	u="È"
+elif [[ $u == "ì" ]]; then
+	u="Ì"
+elif [[ $u == "ò" ]]; then
+	u="Ò"
+elif [[ $u == "ù" ]]; then
+	u="Ù"
+elif [[ $u == "â" ]]; then
+	u="Â"
+elif [[ $u == "ê" ]]; then
+	u="Ê"
+elif [[ $u == "î" ]]; then
+	u="Î"
+elif [[ $u == "ô" ]]; then
+	u="Ô"
+elif [[ $u == "û" ]]; then
+	u="Û"
+fi
+}
+
+echo "Convertendo tudo em minúscula..."
+perl-rename 'y/[A-Z]/[a-z]/' *
+
+
+if [[ $(\ls | \grep -c '_') != 0 ]]; then
+	echo "Substituindo underlines por espaços..."
+	perl-rename 's/_/\ /g' *
+fi
+
+while [[ $(\ls | \grep -c "  ") != 0 ]]; do
+	if [ $w1 == 0 ]; then echo "Removing espaços duplos..."; fi
+	w1=1
+	perl-rename "s/  / /g" *
+done
+
+if [[ $(\ls | \grep -c ' \.mp3') != 0 || $(\ls | \grep -c ' \.flac') != 0 ]]; then
+	echo "Removing espaços antes de pontos..."
+	perl-rename 's/ \.mp3/\.mp3/g' *
+	perl-rename 's/ \.flac/\.flac/g' *
+fi
+
+if [[ $(\ls | \grep -c '`') != 0 ]]; then
+	echo "Substituindo \` e \´ por \'..."
+	perl-rename "s/\`/\'/g" *
+	perl-rename "s/\´/\'/g" *
+fi
+
+if [[ $(\ls | \egrep -c '\.jpg$|\.png$|\.gif$|\.bmp$|\.jpeg$') != 0 ]]; then
+	if [[ ! -e "folder.jpg" ]]; then
+		echo "Fixing Album Art."
+		if [[ $(\ls | \grep -c '.jpg') != 0 ]]; then
+			for fold0 in *.jpg; do
+				if [[ $f == 0 ]]; then
+					mv "$fold0" Folder.jpg
+					f=1
+				fi
+			done
+		fi
+		if [[ $(\ls | \grep -c '.jpeg') != 0 ]]; then
+			for fold0 in *.jpeg; do
+				if [[ $f == 0 ]]; then
+					mv "$fold0" Folder.jpg
+					f=1
+				fi
+			done
+		fi
+		if [[ $(\ls | \grep -c '.png') != 0 ]]; then
+			for fold0 in *.png; do
+				if [[ $f == 0 ]]; then
+					convert "$fold0" Folder.jpg
+					gvfs-trash "$fold0"
+					f=1
+				fi
+			done
+		fi
+		if [[ $(\ls | \grep -c '.gif') != 0 ]]; then
+			for fold0 in *.gif; do
+				if [[ $f == 0 ]]; then
+					convert "$fold0" Folder.jpg
+					gvfs-trash "$fold0"
+					f=1
+				fi
+			done
+		fi
+		if [[ $(\ls | \grep -c '.bmp') != 0 ]]; then
+			for fold0 in *.bmp; do
+				if [[ $f == 0 ]]; then
+					convert "$fold0" Folder.jpg
+					gvfs-trash "$fold0"
+					f=1
+				fi
+			done
+		fi
+	else
+		echo "Fixing Album Art."
+		mv folder.jpg Folder.jpg
+	fi
+fi
+
+if [[ $(\ls | \grep -c '\[') != 0 ]]; then
+	echo "Substituindo chaves por parênteses..."
+	perl-rename 's/\[/\(/g' *
+	perl-rename 's/\]/\)/g' *
+fi
+
+echo -n "Arrumando primeira letra das palavras... ("
+for l in $(echo {a..z} "é" "á" "í" "ó" "ú" "è" "à" "ì" "ò" "ù" "â" "ê" "î" "ô" "û"); do
+	if [[ $(\ls | \grep -c " $l") != 0 ]]; then
+		echo -n "$l, "
+		u=$(echo $l | tr '[:lower:]' '[:upper:]')
+		check_u
+		perl-rename 's/ '$l'/ '$u'/g' *
+	fi
+done
+echo -n $'\b\b)\n'
+
+if [[ $(\ls | \grep -c '(') != 0 ]]; then
+	echo -n "Arrumando primeira letra após parênteses... ("
+	for l2 in $(echo {a..z}); do
+		if [[ $(\ls | \grep -c ' ('${l2}) != 0 ]]; then
+			echo -n "$l2, "
+			u2=$(echo $l2 | tr '[:lower:]' '[:upper:]')
+			perl-rename 's/ \('$l2'/ \('$u2'/g' *
+		fi
+	done
+	echo -n $'\b\b)\n'
+fi
+
+
+for v in " Ix " " Viii " " Vii " " Vi " " Iv " " Iii " "Ii " " Ix\." " Viii\." " Vii\." " Vi\." " Iv\." " Iii\." "Ii\."; do
+	if [[ $(\ls | \grep -c "$v") != 0 ]]; then
+		v2=$(echo $v | tr '[:lower:]' '[:upper:]')
+		echo "Arrumando numero romano ($v -> $v2)"
+		perl-rename '"s/ $v/ $v2/g"' *
+	fi
+done
+
+for expL in "a" "al" "an" "and" "as" "at" "au" "by" "com" "con" "da" "das" "de" \
+"del" "des" "di" "dos" "do" "e" "el" "em" "en" "et" "for" "in" "la" "les" "na" \
+"no" "o" "of" "on" "or" "os" "que" "the" "to" "um" "un" "y"; do
+	var1=$(\ls | \grep -ci " $expL ")
+	var2=$(\ls | \grep -ci "\- $expL ")
+	if [[ $var1 != 0 ]] && [[ $var2 = 0 ]]; then
+		echo "Arrumando palavra em minúscula (meio, $expL)"
+		capitalize_first $expL
+		perl-rename 's/ '$expU' / '$expL' /g' *
+	elif [[ $var1 != 0 ]] && [[ $var2 != 0 ]]; then
+		echo "Arrumando palavra em minúscula (início, $expL)"
+		capitalize_first $expL
+		perl-rename 's/ '$expU' / '$expL' /g' *
+		perl-rename 's/- '$expL' /- '$expU' /g' *
+	fi
+done
+
+for expL in "d" "l" "j" "c" "n" "m" "s" "t" "q"; do
+	capitalize_first $expL
+	if [[ $(\ls | \grep -c " "$expU"'") != 0 ]]; then
+		if [ $w3 == 0 ]; then echo "Correcting french apostrophes..."; fi
+		w3=1
+		perl-rename "s/ "$expU"\'/ "$expL"\'/g" *
+		if [[ $(\ls | \grep -c " $expL'[a-záéíóúàèìòùâêîôû]") != 0 ]]; then
+			for l in $(echo {a..z}) "é" "á" "í" "ó" "ú" "è" "à" "ì" "ò" "ù" "â" "ê" "î" "ô" "û"; do
+				if [[ $(\ls | \grep -c " $expL'$l") != 0 ]]; then
+					u=$(echo $l | tr '[:lower:]' '[:upper:]')
+					check_u
+					perl-rename "s/ $expL\'$l/ $expL\'$u/g" *
+				fi
+			done
+		fi
+	fi
+done
+
