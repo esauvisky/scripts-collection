@@ -6,21 +6,23 @@ __deps=( "pactl" "bc" "playerctl" "spotify" )
 for dep in ${__deps[@]}; do hash $dep >& /dev/null || (echo "$dep was not found. Please install it and try again." && exit 1); done
 
 
-VOLUME_FROM=15
-VOLUME_TO=70
-FULL_RAISE_TIME=300 # in seconds, 300 means raise from 25% to 75% in 5 minutes
+VOLUME_FROM=20      # int
+VOLUME_TO=50        # int
+FULL_RAISE_TIME=120 # in seconds, 300 means raise from 20% to 70% in 5 minutes
 
 # sets base volume
 pactl set-sink-volume 0 25%
 
 # run spotify and start playing
-if ! playerctl play; then
+if playerctl -l 2>&1 | grep 'No players'; then
     spotify & disown
     sleep 5
+elif [[ $(playerctl -l 2>&1) == 'spotify' ]]; then
     playerctl play
 fi
 # rewinds last song
 playerctl previous
+playerctl play
 
 steps=$(($VOLUME_TO-$VOLUME_FROM))
 sleep_time=$(echo "scale=2; $FULL_RAISE_TIME/$steps" | bc)

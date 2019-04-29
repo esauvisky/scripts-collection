@@ -4,20 +4,28 @@
 soft[0]="curl"
 soft[1]="xclip"
 soft[2]="perl"
+soft[3]="surl"
 for check in ${soft[@]}; do if [[ ! -e "/usr/bin/$check" ]]; then echo "$check doesn't exists. Can't execute program."; exit 1;	fi; done
 
 CHARS=$(python2 -c 'print u"\u0091\u0092\u00a0\u200E".encode("utf8")')
+
+SERVICE='tinyurl.com'
+
+function shortIt {
+    echo -n "${1}" | surl
+}
+
 
 if [[ $1 == '-c' ]]; then
     clipboard=$(xclip -o -selection clipboard | sed 's/['"$CHARS"']//g')
     primary=$(xclip -o -selection primary | sed 's/['"$CHARS"']//g')
 
     if [[ ($(echo ${primary} | grep -c '^https*://.*$') -eq 1 || $(echo ${primary} | grep -c '^www\..*$') -eq 1) &&
-             $(echo ${primary} | grep -c 'goo.gl')        -eq 0 ]]; then
+             $(echo ${primary} | grep -c $SERVICE)        -eq 0 ]]; then
         # Se houver um link na seleção primária, utilizá-lo
         url=${primary}
     elif [[ ($(echo ${clipboard} | grep -c '^https*://.*$') -eq 1 || $(echo ${clipboard} | grep -c '^www\..*$') -eq 1) &&
-             $(echo ${clipboard} | grep -c 'goo.gl')        -eq 0 ]]; then
+             $(echo ${clipboard} | grep -c $SERVICE)        -eq 0 ]]; then
         # Senão, usar a área de transferência
         url=${clipboard}
     else
@@ -28,15 +36,14 @@ if [[ $1 == '-c' ]]; then
     # Limpa o clipboard
     echo -n | xclip -selection clipboard
 
-    out=$(curl -qsSL -m10 --connect-timeout 10 \
-            'https://www.googleapis.com/urlshortener/v1/url?key=AIzaSyCo3t8difUtcZl4EFHUt7i0_qbMJIGs2fQ' \
-            -H 'Content-Type: application/json' \
-            -d '{"longUrl":"'${url}'"}' |
-            perl -ne 'if(m/^\s*"id":\s*"(.*)",?$/i) { print $1 }' )
-    #out=$(curl -qsSL -m10 --connect-timeout 10 'https://www.googleapis.com/urlshortener/v1/url?key=AIzaSyCo3t8difUtcZl4EFHUt7i0_qbMJIGs2fQ' -H 'Content-Type: application/json' -d '{ "longUrl": "'${url}'" }')
-    #echo "$out"
-    echo -n "$out" | xclip -selection clipboard
-
+    # Shorts it
+    out=$(echo -n "${url}" | surl -s $SERVICE)
+    if [[ $? != 0 || ${out} == ${url} ]]; then
+        echo "Some error happened. Bye."
+        exit 1
+    else
+        echo -n "$out" | xclip -selection clipboard
+    fi
 elif [[ $1 ]]; then
     url=$(echo ${1} | sed 's/['"$CHARS"']//g')
 

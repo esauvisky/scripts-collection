@@ -6,9 +6,16 @@ PS4=$'+ $(tput sgr0)$(tput setaf 4)DEBUG ${FUNCNAME[0]:+${FUNCNAME[0]}}$(tput bo
 __deps=( "gnome-screenshot" "xclip" "gimp" )
 for dep in ${__deps[@]}; do hash $dep >& /dev/null || (echo "$dep was not found. Please install it and try again."  && exit 1); done
 
-name=`date +%H-%M-%S-%N`.png
-sleep 0.8
-gnome-screenshot -f "/tmp/$name"
-file="/tmp/$name"
-gimp "$file"
-echo -n "$file" | xclip -selection clipboard
+
+filename=/tmp/`date +%Y-%m-%dT%H:%M:%S`.png
+
+if [[ $1 == '-w' ]]; then
+    gnome-screenshot -B -w -f "$filename"
+    echo "$filename" | xclip -i -rmlastnl -selection clipboard
+    xclip -selection clipboard -t image/png -i "$filename"
+else
+    gnome-screenshot -d 3 -f "$filename"
+    gimp "$filename"
+    echo "$filename" | xclip -i -rmlastnl -selection clipboard
+    xclip -selection clipboard -t image/png -i "$filename"
+fi
