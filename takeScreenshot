@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -o errexit; set -o errtrace; set -o pipefail # Exit on errors
 # Uncomment line below for debugging:
-set -x
-PS4=$'+ $(tput sgr0)$(tput setaf 4)DEBUG ${FUNCNAME[0]:+${FUNCNAME[0]}}$(tput bold)[$(tput setaf 6)${LINENO}$(tput setaf 4)]: $(tput sgr0)'; set -o xtrace
+# set -x
+# PS4=$'+ $(tput sgr0)$(tput setaf 4)DEBUG ${FUNCNAME[0]:+${FUNCNAME[0]}}$(tput bold)[$(tput setaf 6)${LINENO}$(tput setaf 4)]: $(tput sgr0)'; set -o xtrace
 __deps=( "gnome-screenshot" "xclip" "gimp" )
 for dep in ${__deps[@]}; do hash $dep >& /dev/null || (echo "$dep was not found. Please install it and try again."  && exit 1); done
 
@@ -12,10 +12,20 @@ filename=/tmp/`date +%Y-%m-%dT%H:%M:%S`.png
 if [[ $1 == '-w' ]]; then
     gnome-screenshot -B -w -f "$filename"
     echo "$filename" | xclip -i -rmlastnl -selection clipboard
+    gimp "$filename"
+    xclip -selection clipboard -t image/png -i "$filename"
+elif [[ $1 == '-a' ]]; then
+    gnome-screenshot -d 3 -f "$filename"
+    echo "$filename" | xclip -i -rmlastnl -selection clipboard
+    gimp "$filename"
     xclip -selection clipboard -t image/png -i "$filename"
 else
-    gnome-screenshot -d 3 -f "$filename"
-    gimp "$filename"
-    echo "$filename" | xclip -i -rmlastnl -selection clipboard
-    xclip -selection clipboard -t image/png -i "$filename"
+    echo 'Usage:'
+    echo '  takeScreenshot [-w] [-a]'
+    echo ''
+    echo '  -w: takes screenshot of window and edits with gimp.'
+    echo '  -a: takes screenshot of the whole screen and edits with gimp.'
+    echo
+    echo 'After editing both the file URI and the image contents will'
+    echo 'get copied into your primary clipboard, respectively.'
 fi

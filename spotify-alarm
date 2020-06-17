@@ -1,33 +1,48 @@
 #!/usr/bin/env bash
-set -o errexit; set -o errtrace; set -o pipefail # Exit on errors
+#set -o errexit; set -o errtrace; set -o pipefail # Exit on errors
 # Uncomment line below for debugging:
 #PS4=$'+ $(tput sgr0)$(tput setaf 4)DEBUG ${FUNCNAME[0]:+${FUNCNAME[0]}}$(tput bold)[$(tput setaf 6)${LINENO}$(tput setaf 4)]: $(tput sgr0)'; set -o xtrace
 __deps=( "pactl" "bc" "playerctl" "spotify" )
 for dep in ${__deps[@]}; do hash $dep >& /dev/null || (echo "$dep was not found. Please install it and try again." && exit 1); done
 
 
-VOLUME_FROM=20      # int
-VOLUME_TO=50        # int
-FULL_RAISE_TIME=120 # in seconds, 300 means raise from 20% to 70% in 5 minutes
+VOLUME_FROM=10      # int
+VOLUME_TO=150       # int
+FULL_RAISE_TIME=40 # in seconds, 300 means raise from 20% to 70% in 5 minutes
+
+# disables hdmi or connected device
+# pactl set-card-profile 0 'off'
+# pactl set-card-profile 1 'off'
+# pactl set-card-profile 0 'output:analog-stereo'
+# pactl set-card-profile 1 'output:analog-stereo'
 
 # sets base volume
-pactl set-sink-volume 0 25%
+pactl set-sink-volume 0 ${VOLUME_FROM}
 
 # run spotify and start playing
-if playerctl -l 2>&1 | grep 'No players'; then
+if ! playerctl -l 2>&1 | grep -c 'spotify' &>/dev/null || ! ps -eo comm | grep -c spotify$; then
+    killall -9 spotify
+    sleep 2
     spotify & disown
-    sleep 5
-elif [[ $(playerctl -l 2>&1) == 'spotify' ]]; then
-    playerctl play
+    sleep 10
 fi
-# rewinds last song
-playerctl previous
+
+# [[ $(($RANDOM % 1)) -eq 0 ]] && playerctl open spotify:playlist:6aghYXXwesz5wTYolbiOJh || playerctl open spotify:playlist:6aghYXXwesz5wTYolbiOJh   # one of the playlist do not work
+playerctl open spotify:playlist:6aghYXXwesz5wTYolbiOJh
+# sleep 10
+# playerctl stop
+# for (( i = 0; i < $(( $RANDOM % 50 ));; i++ )); do # fake shuffle lol
+#     playerctl next
+#     sleep 0.1
+# done
+
+sleep 10
 playerctl play
 
 steps=$(($VOLUME_TO-$VOLUME_FROM))
 sleep_time=$(echo "scale=2; $FULL_RAISE_TIME/$steps" | bc)
 # increases volume gradually
 for (( vol = $VOLUME_FROM; vol <= $VOLUME_TO; vol++ )); do
-    pactl set-sink-volume 0 ${vol}%
+    pactl set-sink-volume @DEFAULT_SINK@ ${vol}%
     sleep ${sleep_time}s
 done

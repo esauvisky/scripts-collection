@@ -44,16 +44,16 @@ if [[ $1 == '-c' ]]; then
     else
         echo -n "$out" | xclip -selection clipboard
     fi
-elif [[ $1 ]]; then
+elif [[ "${1}" =~ http ]]; then
     url=$(echo ${1} | sed 's/['"$CHARS"']//g')
 
-    out=$(curl -qsSL -m10 --connect-timeout 10 \
-            'https://www.googleapis.com/urlshortener/v1/url?key=AIzaSyCo3t8difUtcZl4EFHUt7i0_qbMJIGs2fQ' \
-            -H 'Content-Type: application/json' \
-            -d '{"longUrl":"'${url}'"}' |
-            perl -ne 'if(m/^\s*"id":\s*"(.*)",?$/i) { print $1 }' )
-    echo "$out"
-
+    out=$(echo -n "${url}" | surl -s $SERVICE)
+    if [[ $? != 0 || ${out} == ${url} ]]; then
+        echo "Some error happened. Bye."
+        exit 1
+    else
+        echo "$out"
+    fi
 else
     echo "Uso: shortenurl -c [URL]"
     echo

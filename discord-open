@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+set -o errexit; set -o errtrace; set -o pipefail # Exit on errors
+# Uncomment line below for debugging:
+#PS4=$'+ $(tput sgr0)$(tput setaf 4)DEBUG ${FUNCNAME[0]:+${FUNCNAME[0]}}$(tput bold)[$(tput setaf 6)${LINENO}$(tput setaf 4)]: $(tput sgr0)'; set -o xtrace
+__deps=( "sed" "grep" "discord-canary" )
+for dep in ${__deps[@]}; do hash $dep >& /dev/null || (echo "$dep was not found. Please install it and try again." && exit 1); done
+
+# CORE_DIR="~/.config/discordcanary/0.0.103/modules/discord_desktop_core"
+
+{ discord-canary & } | {
+    if grep -m1 'Module update available: discord_desktop_core'; then
+        if grep -m1 'Finished module installations.'; then
+            sleep 1s
+            killall DiscordCanary
+            gnome-terminal --wait -- bash -c 'LinuxED.py;'
+            discord-open & disown && exit 0
+        fi
+    fi
+}
+
+exit 0

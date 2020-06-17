@@ -12,17 +12,17 @@ string=${string//&/}
 string="lyrics "$string
 string=${string// /+}
 
-if [[ -n $string ]]; then
-    wget -qO- "http://www.google.com/search?hl=en&q=${string}" -U "$_AGENT" > test
-    urls=$(wget -qO- "http://www.google.com/search?hl=en&q=${string}" -U "$_AGENT" | sed 's|<|\n<|g' | \grep 'url?q' | sed 's|..*q=\(..*\)&amp;sa=U..*|\1|')
-    for url in $urls; do
-        if [[ $(echo $url | grep -c 'youtube.com') -ge 1 ]]; then
-            continue
-        else
-            finalurl=$url
-        fi
-    done
-    xdg-open "$finalurl"
-else
-    exit
-fi
+# if [[ -n $string ]]; then
+#     wget -qO- "http://www.google.com/search?hl=en&q=${string}" -U "$_AGENT" > test
+#     urls=$(wget -qO- "http://www.google.com/search?hl=en&q=${string}" -U "$_AGENT" | sed 's|<|\n<|g' | \grep 'url?q' | sed 's|..*q=\(..*\)&amp;sa=U..*|\1|')
+#     for url in $urls; do
+#         if [[ $(echo $url | grep -c 'youtube.com') -ge 1 ]]; then
+#             continue
+#         else
+#             finalurl=$url
+#         fi
+#     done
+    xdg-open "http://www.google.com/search?hl=en&q=${string}"
+# else
+#     exit
+# fi
