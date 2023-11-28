@@ -1,5 +1,13 @@
 #!/usr/bin/env bash
 
+### Bash Confirmation Prompt
+read -p "[y/N] " -r
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    # do dangerous stuff
+    true
+fi
+
+
 ### Permite que funções sejam chamadas via piping (STDIN) ou via parâmetros
 ### Somente funciona no BASH 4!
 ### O tempo 0.01 depende da velocidade do clock e outras variáveis. 0.01 é um bom meio-termo.

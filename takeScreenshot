@@ -7,24 +7,42 @@ __deps=( "gnome-screenshot" "xclip" "gimp" )
 for dep in ${__deps[@]}; do hash $dep >& /dev/null || (echo "$dep was not found. Please install it and try again."  && exit 1); done
 
 
-filename=/tmp/`date +%Y-%m-%dT%H:%M:%S`.png
+filename="$(mktemp -t "XXXXXX.png")"
 
-if [[ $1 == '-w' ]]; then
-    gnome-screenshot -B -w -f "$filename"
+while getopts ":was:e" o; do
+    case "${o}" in
+        w)
+            w=${OPTARG}
+            ;;
+        a)
+            p=${OPTARG}
+            ;;
+        s)
+            p=${OPTARG}
+            ;;
+        e)
+            p=${OPTARG}
+            ;;
+        *)
+            usage
+            ;;
+    esac
+done
+exit
+if [[ $e ]]; then
     echo "$filename" | xclip -i -rmlastnl -selection clipboard
     gimp "$filename"
-    xclip -selection clipboard -t image/png -i "$filename"
-elif [[ $1 == '-a' ]]; then
-    gnome-screenshot -d 3 -f "$filename"
-    echo "$filename" | xclip -i -rmlastnl -selection clipboard
-    gimp "$filename"
-    xclip -selection clipboard -t image/png -i "$filename"
-else
+fi
+xclip -selection clipboard -t image/png -i "$filename"
+
+usage() {
     echo 'Usage:'
-    echo '  takeScreenshot [-w] [-a]'
+    echo '  takeScreenshot [-w|a|s] [-e]'
     echo ''
-    echo '  -w: takes screenshot of window and edits with gimp.'
-    echo '  -a: takes screenshot of the whole screen and edits with gimp.'
+    echo '  -w: takes screenshot of a window'
+    echo '  -s: takes screenshot of the whole screen'
+    echo '  -a: takes screenshot of an area'
+    echo '  -e: edit the screenshot with GIMP'
     echo
     echo 'After editing both the file URI and the image contents will'
     echo 'get copied into your primary clipboard, respectively.'

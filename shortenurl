@@ -4,17 +4,9 @@
 soft[0]="curl"
 soft[1]="xclip"
 soft[2]="perl"
-soft[3]="surl"
 for check in ${soft[@]}; do if [[ ! -e "/usr/bin/$check" ]]; then echo "$check doesn't exists. Can't execute program."; exit 1;	fi; done
 
-CHARS=$(python2 -c 'print u"\u0091\u0092\u00a0\u200E".encode("utf8")')
-
-SERVICE='tinyurl.com'
-
-function shortIt {
-    echo -n "${1}" | surl
-}
-
+CHARS=$'\xc2\x91\xc2\x92\xc2\xa0\xe2\x80\x8e'
 
 if [[ $1 == '-c' ]]; then
     clipboard=$(xclip -o -selection clipboard | sed 's/['"$CHARS"']//g')
@@ -37,7 +29,7 @@ if [[ $1 == '-c' ]]; then
     echo -n | xclip -selection clipboard
 
     # Shorts it
-    out=$(echo -n "${url}" | surl -s $SERVICE)
+    out=$(curl "https://pk.md/pog/${url}")
     if [[ $? != 0 || ${out} == ${url} ]]; then
         echo "Some error happened. Bye."
         exit 1
@@ -47,7 +39,7 @@ if [[ $1 == '-c' ]]; then
 elif [[ "${1}" =~ http ]]; then
     url=$(echo ${1} | sed 's/['"$CHARS"']//g')
 
-    out=$(echo -n "${url}" | surl -s $SERVICE)
+    out=$(curl "https://pk.md/pog/${url}")
     if [[ $? != 0 || ${out} == ${url} ]]; then
         echo "Some error happened. Bye."
         exit 1
