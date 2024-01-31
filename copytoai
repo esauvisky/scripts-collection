@@ -1,0 +1,43 @@
+#!/bin/bash
+
+# Ask the user for a file search pattern with a default value of '**/*.py'
+file_pattern=$(zenity --entry --title="File Search Pattern" --text="Enter the file search pattern:" --entry-text="**/*.py")
+
+# If the user cancels the operation, exit
+if [ $? -ne 0 ]; then
+    zenity --info --text="Operation canceled."
+    exit 1
+fi
+
+# Find all files that match the pattern. Modify the path if you want to search in a specific directory
+# The following command will work in bash. For other shells, you might need to adjust the command.
+readarray -t files < <(shopt -s globstar; for file in $file_pattern; do [[ -e "$file" ]] && echo "$file"; done)
+
+# Check if any file is found
+if [ ${#files[@]} -eq 0 ]; then
+    zenity --error --text="No files found matching the pattern. Exiting."
+    exit 1
+fi
+
+# Let the user select from the list of files
+selected_files=$(zenity --list --title="Select Files" --column="Files" "${files[@]}" --multiple --separator=" ")
+
+# Check if any file is selected
+if [ -z "$selected_files" ]; then
+    zenity --error --text="No file selected. Exiting."
+    exit 1
+fi
+
+# Initialize the string to be copied to the clipboard
+clipboard_content=""
+
+# Loop through each selected file
+for file in $selected_files; do
+    clipboard_content+="$file\n\`\`\`js\n$(cat "$file")\n\`\`\`\n\n"
+done
+
+# Copy the content to the clipboard using xclip
+echo -ne "$clipboard_content" | xclip -selection clipboard
+
+# Notify the user that the content is copied
+zenity --info --text="The content has been copied to the clipboard."

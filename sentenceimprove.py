@@ -2,7 +2,9 @@
 import os
 import shlex
 import subprocess
-import openai
+from openai import OpenAI
+
+client = OpenAI()
 import sys
 from loguru import logger
 
@@ -29,16 +31,14 @@ Assistant: """
 
 def send_request(sentence):
     # for ammount, temp, model, single_or_multiple in [(3, 0.6, "gpt-3.5-turbo", "single"), (2, 1.1, "gpt-3.5-turbo", "multiple")]: #(1, 0.95, "gpt-4", "multiple")]:
-    response = openai.ChatCompletion.create(
-        model="gpt-4",
-        top_p=1,
-        temperature=1,
-        stop=None,
-        max_tokens=2000,
-        messages=[
-            {"role": "system", "content": SYSTEM},
-            {"role": "user", "content": PROMPT.replace("<SENTENCE>", sentence)},],
-    )
+    response = client.chat.completions.create(model="gpt-4",
+    top_p=1,
+    temperature=1,
+    stop=None,
+    max_tokens=2000,
+    messages=[
+        {"role": "system", "content": SYSTEM},
+        {"role": "user", "content": PROMPT.replace("<SENTENCE>", sentence)},])
 
     # Fix some common issues
     for choice in response.choices:
