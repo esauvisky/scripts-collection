@@ -12,7 +12,7 @@ while true; do
         exit
     fi
     rm "$file.mp4"
-    if ffmpeg -i "$file" -c:v libx264 -pix_fmt yuv420p -profile:v baseline -level 3.0 -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" -acodec copy -movflags +faststart "$file.mp4"; then
+    if ffmpeg -i "$file" -pix_fmt yuv420p -vf "pad=ceil(iw/2)*2:ceil(ih/2)*2" -acodec copy -movflags +faststart "$file.mp4"; then
         break
     fi
     echo "Failed $count times, trying again..."

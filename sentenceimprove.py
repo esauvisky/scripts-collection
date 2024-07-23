@@ -31,7 +31,7 @@ Assistant: """
 
 def send_request(sentence):
     # for ammount, temp, model, single_or_multiple in [(3, 0.6, "gpt-3.5-turbo", "single"), (2, 1.1, "gpt-3.5-turbo", "multiple")]: #(1, 0.95, "gpt-4", "multiple")]:
-    response = client.chat.completions.create(model="gpt-4",
+    response = client.chat.completions.create(model="gpt-4o",
     top_p=1,
     temperature=1,
     stop=None,
@@ -42,7 +42,7 @@ def send_request(sentence):
 
     # Fix some common issues
     for choice in response.choices:
-        content = choice.message.content
+        content = choice.message.content.replace("User:", "").replace("Assistant:", "").strip()
 
     return content
 

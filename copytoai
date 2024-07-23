@@ -1,7 +1,7 @@
 #!/bin/bash
 
-# Ask the user for a file search pattern with a default value of '**/*.py'
-file_pattern=$(zenity --entry --title="File Search Pattern" --text="Enter the file search pattern:" --entry-text="**/*.py")
+# Ask the user for a directory to search in with a default value of the current directory
+directory=$(zenity --entry --title="Directory Search" --text="Enter the directory to search in:" --entry-text="$PWD")
 
 # If the user cancels the operation, exit
 if [ $? -ne 0 ]; then
@@ -9,31 +9,62 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Find all files that match the pattern. Modify the path if you want to search in a specific directory
-# The following command will work in bash. For other shells, you might need to adjust the command.
-readarray -t files < <(shopt -s globstar; for file in $file_pattern; do [[ -e "$file" ]] && echo "$file"; done)
+# Find all files, ignoring .git directories, and strip the directory path
+readarray -t files < <(find "$directory" -type f ! -path "*/.git/*" | sed "s|$directory/||" | sort)
 
-# Check if any file is found
-if [ ${#files[@]} -eq 0 ]; then
-    zenity --error --text="No files found matching the pattern. Exiting."
+# Find all directories, ignoring .git directories, and strip the directory path
+readarray -t directories < <(find "$directory" -type d ! -path "*/.git/*" | sed "s|$directory/||" | sort)
+
+# Check if any file or directory is found
+if [ ${#files[@]} -eq 0 ] && [ ${#directories[@]} -eq 0 ]; then
+    zenity --error --text="No files or directories found. Exiting."
     exit 1
 fi
 
-# Let the user select from the list of files
-selected_files=$(zenity --list --title="Select Files" --column="Files" "${files[@]}" --multiple --separator=" ")
+# Combine files and directories, with directories at the bottom
+items=("${files[@]}" "${directories[@]}")
 
-# Check if any file is selected
-if [ -z "$selected_files" ]; then
-    zenity --error --text="No file selected. Exiting."
+# Let the user select from the list of files and directories
+selected_items=$(zenity --list --title="Select Files and Directories" --column="Files/Directories" "${items[@]}" --multiple --separator=" ")
+
+# Check if any item is selected
+if [ -z "$selected_items" ]; then
+    zenity --error --text="No file or directory selected. Exiting."
     exit 1
 fi
 
 # Initialize the string to be copied to the clipboard
 clipboard_content=""
 
-# Loop through each selected file
-for file in $selected_files; do
-    clipboard_content+="$file\n\`\`\`js\n$(cat "$file")\n\`\`\`\n\n"
+# Function to get the language identifier based on the file extension
+get_language() {
+    case "$1" in
+        *.sh) echo "bash" ;;
+        *.py) echo "python" ;;
+        *.js) echo "javascript" ;;
+        *.java) echo "java" ;;
+        *.c) echo "c" ;;
+        *.cpp) echo "cpp" ;;
+        *.html) echo "html" ;;
+        *.css) echo "css" ;;
+        *.json) echo "json" ;;
+        *.xml) echo "xml" ;;
+        *.php) echo "php" ;;
+        *.rb) echo "ruby" ;;
+        *.go) echo "go" ;;
+        *) echo "" ;;
+    esac
+}
+
+# Loop through each selected item
+for item in $selected_items; do
+    full_path="$directory/$item"
+    if [ -d "$full_path" ]; then
+        clipboard_content+="$item/\n\n"
+    else
+        language=$(get_language "$item")
+        clipboard_content+="$item\n\`\`\`$language\n$(cat "$full_path")\n\`\`\`\n\n"
+    fi
 done
 
 # Copy the content to the clipboard using xclip
