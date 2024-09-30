@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+import textwrap
 import os
 import shlex
 import subprocess
@@ -46,7 +47,68 @@ Here are some examples of input and output:
 <output>eu estou sempre bastante ocupado, então já falei à minha assistente, Thaylana, para que amanhã entre em contato contigo. Se preferir podes falar com ela antes também</output>
 </example>
 
-Now, reconstruct the given text based on these instructions. Provide your reconstructed text inside <output> tags, without any additional commentary or explanations. Generate 3 different versions of the reconstructed text, each enclosed in separate <output> tags."""
+Now, reconstruct the text below based on these instructions. Provide the text inside <output> tags, without any additional commentary or explanations. Generate 3 different versions of the reconstructed text, each enclosed in separate <output> tags."""
+
+import textwrap
+
+EXAMPLE_PROMPTS = [
+    # First example
+    {"role": "user",
+     "content": "<input>Do you still have the findings of the reversion of the communication protocol? I work with RE and would love to play around with that 😏</input>"},
+    {"role": "assistant",
+     "content": textwrap.dedent("""
+        <output>Do you still have your findings from reverse engineering the communication protocol? I work in reverse engineering and would love to explore that 😏</output>
+        <output>I work with reverse engineering and would love to experiment with it 😏. Do you still have the results from the communication protocol reversion?</output>
+        <output>Do you still have the results from the reversion of the communication protocol? I work with RE and would be excited to explore that 😏</output>
+        <output>Do you still have the results from reversing the communication protocol? I specialize in reverse engineering and would love to experiment with them. 😏</output>
+        <output>Do you still have the results from the communication protocol reversal? I work in reverse engineering and would love to dig into it 😏</output>""".strip())},
+
+    # Second example
+    {"role": "user",
+     "content": "<input>Can you share the recent sales reports? I'm preparing for tomorrow's meeting, and it would really help.</input>"},
+    {"role": "assistant",
+     "content": textwrap.dedent("""
+        <output>Could you send me the updated sales reports? I need them for a meeting tomorrow and would appreciate it.</output>
+        <output>I'm preparing for tomorrow's meeting. Could you share the sales reports when you get a chance?</output>
+        <output>Are the recent sales reports available? I'd like to review them before the meeting.</output>
+        <output>I could really use the sales data for tomorrow's meeting. Can you send it over?</output>
+        <output>Any chance you can provide me with the sales reports? They'd be useful for tomorrow's discussion.</output>""".strip())},
+
+    # Third example
+    {"role": "user",
+     "content": "<input>have you checked out the new UI? we need feedback on this asap. let me know when you get a chance</input>"},
+    {"role": "assistant",
+     "content": textwrap.dedent("""
+        <output>Have you had a look at the new UI? we could really use your feedback soon. let me know when you're able to review it</output>
+        <output>We need feedback on the new UI as soon as possible. please take a look and tell me what you think</output>
+        <output>Could you check out the new UI? your input is needed urgently, so please let me know when you have time</output>
+        <output>Have you reviewed the new UI design yet? we need feedback at your earliest convenience</output>
+        <output>Let me know when you've had a chance to look at the UI changes. your feedback is important and we need it quickly</output>""".strip())},
+
+    # Fourth example (multi-line input)
+    {"role": "user",
+     "content": "<input>hey! did you finish reviewing the documentation? we're hoping to finalize the project scope by the end of the week.\n\nif you can, try to send me your thoughts by thursday. thx!</input>"},
+    {"role": "assistant",
+     "content": textwrap.dedent("""
+        <output>hi! just checking in—have you finished looking over the documentation? we want to finalize the project scope by week's end.</output>
+        <output>did you get a chance to review the docs? if possible, please send over your feedback by thursday so we can move forward with the project.</output>
+        <output>we need to finalize the project scope this week. can you send me your review of the documentation by thursday?</output>
+        <output>if you've finished reviewing the documentation, could you share your thoughts by thursday? we're wrapping up the project scope soon. thx!!</output>
+        <output>please let me know when you've finished reviewing the documents. we're hoping to have everything ready for final approval by week's end. thank you</output>""".strip())},
+
+    # Fifth example (varying structure drastically)
+    {"role": "user",
+     "content": "<input>Are the Q3 results out yet? I've been waiting on them for ages and still no word. This is holding up our analysis!</input>"},
+    {"role": "assistant",
+     "content": textwrap.dedent("""
+        <output>Do we have the Q3 numbers yet? I need them to move forward with the analysis, and they've been delayed for too long.</output>
+        <output>Still waiting on the Q3 results here. They're overdue and holding back our analysis process.</output>
+        <output>The Q3 report is holding up our work. When can we expect to receive it?</output>
+        <output>We really need those Q3 results for our analysis. Have they been released yet?</output>
+        <output>Has there been any update on the Q3 data? It's becoming a major blocker for our analysis!</output>""".strip())}
+]
+
+
 
 def send_request(sentence):
     response = client.chat.completions.create(
