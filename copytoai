@@ -1,5 +1,13 @@
 #!/bin/bash
 
+# Check if arguments are passed
+if [ $# -gt 0 ]; then
+    args=("$@")
+    use_args=true
+else
+    use_args=false
+fi
+
 # Ask the user for a directory to search in with a default value of the current directory
 directory=$(zenity --entry --title="Directory Search" --text="Enter the directory to search in:" --entry-text="$PWD")
 
@@ -9,11 +17,36 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Find all files, ignoring .git directories, and strip the directory path
-readarray -t files < <(find "$directory" -type f ! -path "*/.git/*" | sed "s|$directory/||" | sort)
+# Initialize arrays
+files=()
+directories=()
 
-# Find all directories, ignoring .git directories, and strip the directory path
-readarray -t directories < <(find "$directory" -type d ! -path "*/.git/*" | sed "s|$directory/||" | sort)
+if $use_args; then
+    # Process the arguments
+    for arg in "${args[@]}"; do
+        full_path="$directory/$arg"
+        if [ -e "$full_path" ]; then
+            rel_path=${full_path#"$directory"/}
+            if [ -d "$full_path" ]; then
+                directories+=("$rel_path")
+            elif [ -f "$full_path" ]; then
+                files+=("$rel_path")
+            else
+                zenity --error --text="The item '$arg' is not a regular file or directory."
+                exit 1
+            fi
+        else
+            zenity --error --text="The item '$arg' does not exist under '$directory'."
+            exit 1
+        fi
+    done
+else
+    # Find all files, ignoring .git directories, and strip the directory path
+    readarray -t files < <(find "$directory" -type f ! -path "*/.git/*" | sed "s|$directory/||" | sort)
+
+    # Find all directories, ignoring .git directories, and strip the directory path
+    readarray -t directories < <(find "$directory" -type d ! -path "*/.git/*" | sed "s|$directory/||" | sort)
+fi
 
 # Check if any file or directory is found
 if [ ${#files[@]} -eq 0 ] && [ ${#directories[@]} -eq 0 ]; then
