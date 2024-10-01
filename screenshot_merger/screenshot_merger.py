@@ -8,7 +8,7 @@ from threading import Thread
 from PIL import Image, ImageTk
 import numpy as np
 import mss
-from pynput import keyboard
+from pynput import keyboard, mouse  # Modified import
 import platform
 import subprocess
 from io import BytesIO
@@ -274,7 +274,6 @@ class ClipboardManager:
 
 class KeyboardListener:
     def __init__(self):
-        self.screenshot_event = False
         self.exit_event = False
 
     def start(self):
@@ -287,17 +286,38 @@ class KeyboardListener:
 
     def _on_press(self, key):
         try:
-            if key == keyboard.Key.enter:
-                self.screenshot_event = True
-            elif key == keyboard.Key.esc:
+            if key == keyboard.Key.esc:
                 self.exit_event = True
+                logger.info("Escape key pressed. Exiting...")
                 return False  # Stop listener
         except AttributeError:
             pass
 
+class MouseScrollListener:
+    def __init__(self):
+        self.screenshot_event = False
+        self.exit_event = False
+        self.scroll_count = 0
+        self.scroll_threshold = 5  # Number of scrolls before triggering screenshot
+
+    def start(self):
+        listener_thread = Thread(target=self._listen_mouse, daemon=True)
+        listener_thread.start()
+
+    def _listen_mouse(self):
+        with mouse.Listener(on_scroll=self._on_scroll) as listener:
+            listener.join()
+
+    def _on_scroll(self, x, y, dx, dy):
+        self.scroll_count += 1
+        logger.debug(f"Mouse scrolled: count={self.scroll_count}")
+        if self.scroll_count >= self.scroll_threshold:
+            self.screenshot_event = True
+            self.scroll_count = 0
+
 # Function to display images in debug mode
 def display_images(new_image, merged_image):
-    root = tk.Tk()
+    root = tk.Tk(sync=False)
     root.title("Debug Images")
 
     # Create frames for layout
@@ -344,9 +364,12 @@ def main():
     keyboard_listener = KeyboardListener()
     keyboard_listener.start()
 
+    mouse_listener = MouseScrollListener()
+    mouse_listener.start()
+
     logger.info("\nInstructions:\n"
-                " - Press Enter to capture a screenshot of the selected region.\n"
-                " - Scroll the underlying content between captures.\n"
+                " - The script will capture a screenshot after every 5 mouse scrolls.\n"
+                " - Scroll the underlying content to capture new screenshots.\n"
                 " - Press Escape to finish capturing and merge images.\n")
 
     merged_image = None
@@ -354,19 +377,13 @@ def main():
     screenshot_capture = ScreenshotCapture()
 
     while not keyboard_listener.exit_event:
-        if keyboard_listener.screenshot_event:
+        if mouse_listener.screenshot_event:
             img = screenshot_capture.capture_screenshot(selection)
             logger.info("Captured image.")
 
             # Try to merge the new image with the merged image
             merged_image = merged_image if merged_image is not None else img
             new_merged = merge_images(merged_image, img)
-
-            # Display images in debug mode
-            if debug_mode:
-                            display_images(img, merged_image)
-
-
             if new_merged is None:
                 # No overlap, store it for later
                 unmerged_images.append(img)
