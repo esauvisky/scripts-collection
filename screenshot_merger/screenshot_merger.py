@@ -216,10 +216,7 @@ def _find_overlap(base, new):
             for n_idx, b_idx in enumerate(range(base_row_idx + 1, arr_base.shape[0])):
                 if n_idx + 1 < arr_new.shape[0] and np.array_equal(arr_base[b_idx], arr_new[n_idx + 1]):
                     match_length += 1
-                else:
-                    match_length = 0
-                    break
-            if match_length > 0:
+            if match_length > 50:
                 return match_length  # Positive value indicating overlap length
 
     # Negative overlap: new image is above base image
@@ -230,10 +227,7 @@ def _find_overlap(base, new):
             for n_idx, b_idx in enumerate(range(base_row_idx - 1, -1, -1)):
                 if n_idx + 1 < arr_new.shape[0] and np.array_equal(arr_base[b_idx], arr_new[arr_new.shape[0] - n_idx - 2]):
                     match_length += 1
-                else:
-                    match_length = 0
-                    break
-            if match_length > 0:
+            if match_length > 50:
                 return -match_length  # Negative value indicating overlap length in a different direction
 
     # No overlap found
