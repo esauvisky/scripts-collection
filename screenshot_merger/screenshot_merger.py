@@ -396,23 +396,26 @@ def main():
                 # No overlap, store it for later
                 unmerged_images.append(img)
                 logger.info("No overlap found. Stored for later merging.")
-            elif new_merged != merged_image:
-                logger.info("Successfully merged with existing image.")
+            else:
+                logger.info(f"Successfully merged with existing image. {len(unmerged_images)} images unmerged.")
                 unmerged_images_copy = unmerged_images.copy()
                 for unmerged_img in unmerged_images_copy:
                     new_new_merged = merge_images(new_merged, unmerged_img)
                     if new_new_merged is not None:
-                        if new_new_merged != new_merged:
+                        if new_new_merged.size != new_merged.size:
                             logger.info("Successfully merged with existing image.")
                             new_merged = new_new_merged
+                        else:
+                            logger.info("Full overlap detected.")
                         unmerged_images.remove(unmerged_img)
-                        logger.info("Cleaned an unmerged image.")
                 merged_image = new_merged
-            elif new_merged is not None:
-                logger.info("Fully overlapping image. Skipping.")
 
-            keyboard_listener.screenshot_event = False
-        time.sleep(0.1)  # Prevent busy waiting
+            # Display images in debug mode
+            if debug_mode:
+                display_images(img, merged_image)
+
+            mouse_listener.screenshot_event = False
+        time.sleep(0.01)  # Prevent busy waiting
 
     if merged_image is None:
         logger.error("No screenshots captured. Exiting.")
