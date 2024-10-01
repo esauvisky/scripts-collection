@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import re
 import shlex
+import shutil
 import sys
 import time
 import argparse  # Added for command-line arguments
@@ -260,15 +261,22 @@ class ClipboardManager:
 
     @staticmethod
     def _copy_image_to_clipboard_linux(image):
+        # Save image to a temporary PNG file
+        temp_file_name = "/tmp/screenshot_merger.png"
+        with open(temp_file_name, "wb") as temp_file:
+            image.save(temp_file)
         try:
-            # Save image to a temporary PNG file
-            temp_file_name = "/tmp/screenshot_merger.png"
-            with open(temp_file_name, "wb") as temp_file:
-                image.save(temp_file)
-            bash_cmd = f"xclip -selection clipboard -t image/png -i {temp_file_name}"
-            subprocess.run(shlex.split(bash_cmd))
-        except FileNotFoundError:
-            logger.error("xclip is not installed. Please install it using your package manager (e.g., sudo apt-get install xclip).")
+            if shutil.which("copyq") is not None:
+                # Use copyq to copy the image to the clipboard
+                bash_cmd = f"copyq copyImageToClipboard {temp_file_name}"
+                subprocess.run(shlex.split(bash_cmd), timeout=10)
+            elif shutil.which("xclip") is not None:
+                bash_cmd = f"xclip -selection clipboard -t image/png -i {temp_file_name}"
+                subprocess.run(shlex.split(bash_cmd), timeout=10)
+            else:
+                raise FileNotFoundError("copyq or xclip is not installed. Please install it using your package manager (e.g., sudo apt-get install copyq or sudo apt-get install xclip).")
+        except FileNotFoundError as e:
+            logger.error(e)
         except Exception as e:
             logger.exception(f"Failed to copy image to clipboard: {e}")
 
