@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 import re
+import shlex
 import sys
 import time
+import argparse  # Added for command-line arguments
 from threading import Thread
-from PIL import Image
+from PIL import Image, ImageTk
 import numpy as np
 import mss
 from pynput import keyboard
@@ -298,27 +300,62 @@ class KeyboardListener:
         except AttributeError:
             pass
 
+# Function to display images in debug mode
+def display_images(new_image, merged_image):
+    root = tk.Tk()
+    root.title("Debug Images")
+
+    # Create frames for layout
+    frame_new = tk.Frame(root)
+    frame_new.pack(side="left", padx=10, pady=10)
+
+    frame_merged = tk.Frame(root)
+    frame_merged.pack(side="right", padx=10, pady=10)
+
+    # New Captured Image
+    new_image_tk = ImageTk.PhotoImage(new_image)
+    new_image_label = tk.Label(frame_new, image=new_image_tk)
+    new_image_label.pack()
+    new_image_title = tk.Label(frame_new, text="New Captured Image")
+    new_image_title.pack()
+
+    # Merged Image
+    if merged_image is not None:
+        merged_image_tk = ImageTk.PhotoImage(merged_image)
+        merged_image_label = tk.Label(frame_merged, image=merged_image_tk)
+        merged_image_label.pack()
+        merged_image_title = tk.Label(frame_merged, text="Current Merged Image")
+        merged_image_title.pack()
+
+    # Keep a reference to the images to prevent garbage collection
+    root.mainloop()
+
 def main():
-    print("Select the region to capture.")
+    parser = argparse.ArgumentParser(description='Screenshot merger.')
+    parser.add_argument('--debug', action='store_true', help='Enable debug mode to display images during merging.')
+    args = parser.parse_args()
+
+    debug_mode = args.debug
+
+    logger.info("Select the region to capture.")
     region_selector = RegionSelector()
     selection = region_selector.select_region()
     if not selection:
-        print("No region selected. Exiting.")
+        logger.error("No region selected. Exiting.")
         sys.exit(0)
 
-    print(f"Selected region: {selection}")
+    logger.info(f"Selected region: {selection}")
 
     keyboard_listener = KeyboardListener()
     keyboard_listener.start()
 
-    print("\nInstructions:")
-    print(" - Press Enter to capture a screenshot of the selected region.")
-    print(" - Scroll the underlying content between captures.")
-    print(" - Press Escape to finish capturing and merge images.\n")
+    logger.info("\nInstructions:\n"
+                " - Press Enter to capture a screenshot of the selected region.\n"
+                " - Scroll the underlying content between captures.\n"
+                " - Press Escape to finish capturing and merge images.\n")
 
     merged_image = None
     unmerged_images = []
-    image_merger = ImageMerger()
     screenshot_capture = ScreenshotCapture()
 
     while not keyboard_listener.exit_event:
