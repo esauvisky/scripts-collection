@@ -148,68 +148,93 @@ class ScreenshotCapture:
             img = Image.frombytes('RGB', sct_img.size, sct_img.rgb)
             return img
 
-class ImageMerger:
-    @staticmethod
-    def merge_images(merged_image, new_image):
-        if merged_image is None:
-            return new_image
+def merge_images(merged_image, new_image):
+    # Try to find overlap in both directions
+    overlap = _find_overlap(merged_image, new_image)
+    logger.debug(f"Detected overlap: {overlap}")
 
-        # Try to find overlap in both directions
-        overlap_down = ImageMerger._find_overlap(merged_image, new_image)
-        overlap_up = ImageMerger._find_overlap(new_image, merged_image)
+    # Early return if there's no overlap
+    if overlap == 0:
+        logger.info("No overlap detected between images.")
+        return None
 
-        # Check if the images are entirely overlapping
-        if ImageMerger._is_entirely_overlapping(merged_image, new_image):
-            print("New screenshot entirely overlaps with the merged image. Ignoring it.")
-            return merged_image
+    # Determine the cropping coordinates based on overlap direction
+    if overlap == new_image.height or overlap == -new_image.height:
+        # Full overlap
+        logger.info("Fully overlapping image. Skipping.")
+        return merged_image
 
-        if overlap_down > 0:
-            # Merge new_image below merged_image
-            img_cropped = new_image.crop((0, overlap_down, new_image.width, new_image.height))
-            new_height = merged_image.height + img_cropped.height
-            new_img = Image.new('RGB', (merged_image.width, new_height))
-            new_img.paste(merged_image, (0, 0))
-            new_img.paste(img_cropped, (0, merged_image.height))
-            return new_img
-        elif overlap_up > 0:
-            # Merge new_image above merged_image
-            img_cropped = new_image.crop((0, 0, new_image.width, new_image.height - overlap_up))
-            new_height = img_cropped.height + merged_image.height
-            new_img = Image.new('RGB', (merged_image.width, new_height))
-            new_img.paste(img_cropped, (0, 0))
-            new_img.paste(merged_image, (0, img_cropped.height))
-            return new_img
-        else:
-            # No overlap
-            return None
+    if overlap > 0:
+        # New image overlaps at the bottom of the merged image
+        crop_box_new = (0, overlap, new_image.width, new_image.height)
+        paste_position = (0, merged_image.height)
+        merge_direction = "below"
+    else:
+        # New image overlaps at the top of the merged image
+        crop_box_new = (0, 0, new_image.width, new_image.height + overlap)
+        paste_position = (0, new_image.height + overlap)
+        merge_direction = "above"
 
-    @staticmethod
-    def _find_overlap(img1, img2):
-        arr1 = np.array(img1)
-        arr2 = np.array(img2)
+    # Crop the overlapping part
+    img_cropped = new_image.crop(crop_box_new)
+    logger.debug(f"Cropped new image with box: {crop_box_new}")
 
-        # Ensure images have the same width and number of channels
-        if arr1.shape[1] != arr2.shape[1] or arr1.shape[2] != arr2.shape[2]:
-            raise ValueError("Images must have the same width and number of channels for overlap detection.")
+    # Calculate new dimensions
+    new_height = merged_image.height + img_cropped.height
+    new_img = Image.new('RGB', (merged_image.width, new_height))
+    logger.debug(f"Created new image with size: {new_img.size}")
 
-        max_possible = min(arr1.shape[0], arr2.shape[0])
+    # Paste the images onto the new image
+    if overlap > 0:
+        new_img.paste(merged_image, (0, 0))
+        new_img.paste(img_cropped, paste_position)
+    else:
+        new_img.paste(img_cropped, (0, 0))
+        new_img.paste(merged_image, paste_position)
 
-        # Check for overlap from bottom of img1 to top of img2
-        for i in range(1, max_possible + 1):
-            if np.array_equal(arr1[-i:], arr2[:i]):
-                return i
+    logger.info(f"Merged new image {merge_direction} the existing merged image.")
+    return new_img
 
-        return 0
+import numpy as np
 
-    @staticmethod
-    def _is_entirely_overlapping(img1, img2):
-        arr1 = np.array(img1)
-        arr2 = np.array(img2)
+def _find_overlap(base, new):
+    arr_base = np.array(base)
+    arr_new = np.array(new)
 
-        if arr1.shape != arr2.shape:
-            return False
+    # Ensure images have the same width and number of channels
+    if arr_base.shape[1] != arr_new.shape[1] or arr_base.shape[2] != arr_new.shape[2]:
+        raise ValueError("Images must have the same width and number of channels for overlap detection.")
 
-        return np.array_equal(arr1, arr2)
+    # Positive overlap: new image is below base image
+    for base_row_idx in range(arr_base.shape[0] - 1, -1, -1):
+        if np.array_equal(arr_base[base_row_idx], arr_new[0]):
+            match_length = 1
+            # Potential overlap found, check further
+            for n_idx, b_idx in enumerate(range(base_row_idx + 1, arr_base.shape[0])):
+                if n_idx + 1 < arr_new.shape[0] and np.array_equal(arr_base[b_idx], arr_new[n_idx + 1]):
+                    match_length += 1
+                else:
+                    match_length = 0
+                    break
+            if match_length > 0:
+                return match_length  # Positive value indicating overlap length
+
+    # Negative overlap: new image is above base image
+    for base_row_idx in range(0, arr_base.shape[0]):
+        if np.array_equal(arr_base[base_row_idx], arr_new[arr_new.shape[0] - 1]):
+            match_length = 1
+            # Potential overlap found, check further
+            for n_idx, b_idx in enumerate(range(base_row_idx - 1, -1, -1)):
+                if n_idx + 1 < arr_new.shape[0] and np.array_equal(arr_base[b_idx], arr_new[arr_new.shape[0] - n_idx - 2]):
+                    match_length += 1
+                else:
+                    match_length = 0
+                    break
+            if match_length > 0:
+                return -match_length  # Negative value indicating overlap length in a different direction
+
+    # No overlap found
+    return 0
 
 class ClipboardManager:
     @staticmethod
