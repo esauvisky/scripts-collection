@@ -362,24 +362,36 @@ def main():
     while not keyboard_listener.exit_event:
         if keyboard_listener.screenshot_event:
             img = screenshot_capture.capture_screenshot(selection)
-            print(f"Captured image.")
+            logger.info("Captured image.")
+
             # Try to merge the new image with the merged image
-            new_merged = image_merger.merge_images(merged_image, img)
-            if new_merged is not None:
-                merged_image = new_merged
-                print("Successfully merged with existing image.")
-                # After merging, check if any unmerged images can now be merged
-                unmerged_images_copy = unmerged_images.copy()
-                for unmerged_img in unmerged_images_copy:
-                    new_merged = image_merger.merge_images(merged_image, unmerged_img)
-                    if new_merged is not None:
-                        merged_image = new_merged
-                        unmerged_images.remove(unmerged_img)
-                        print("Merged an unmerged image.")
-            else:
+            merged_image = merged_image if merged_image is not None else img
+            new_merged = merge_images(merged_image, img)
+
+            # Display images in debug mode
+            if debug_mode:
+                            display_images(img, merged_image)
+
+
+            if new_merged is None:
                 # No overlap, store it for later
                 unmerged_images.append(img)
-                print("No overlap found. Stored for later merging.")
+                logger.info("No overlap found. Stored for later merging.")
+            elif new_merged != merged_image:
+                logger.info("Successfully merged with existing image.")
+                unmerged_images_copy = unmerged_images.copy()
+                for unmerged_img in unmerged_images_copy:
+                    new_new_merged = merge_images(new_merged, unmerged_img)
+                    if new_new_merged is not None:
+                        if new_new_merged != new_merged:
+                            logger.info("Successfully merged with existing image.")
+                            new_merged = new_new_merged
+                        unmerged_images.remove(unmerged_img)
+                        logger.info("Cleaned an unmerged image.")
+                merged_image = new_merged
+            elif new_merged is not None:
+                logger.info("Fully overlapping image. Skipping.")
+
             keyboard_listener.screenshot_event = False
         time.sleep(0.1)  # Prevent busy waiting
 
