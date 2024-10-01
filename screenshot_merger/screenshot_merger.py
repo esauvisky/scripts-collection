@@ -56,7 +56,7 @@ if OS_NAME == 'Windows':
     try:
         import win32clipboard  # type: ignore
     except ImportError:
-        print("pywin32 is not installed. Please install it using 'pip install pywin32'")
+        logger.error("pywin32 is not installed. Please install it using 'pip install pywin32'")
         sys.exit(1)
 
 class RegionSelector:
@@ -67,11 +67,11 @@ class RegionSelector:
         elif OS_NAME == 'Linux':
             # Verify if DISPLAY is set to ensure X11 session
             if os.environ.get('DISPLAY') is None:
-                print("DISPLAY environment variable not set. Ensure you are running an X11 session.")
+                logger.error("DISPLAY environment variable not set. Ensure you are running an X11 session.")
                 sys.exit(1)
             return RegionSelector._select_region_linux()
         else:
-            print(f"Unsupported Operating System: {OS_NAME}")
+            logger.error(f"Unsupported Operating System: {OS_NAME}")
             sys.exit(1)
 
     @staticmethod
@@ -133,13 +133,14 @@ class RegionSelector:
             selection = {'left': l, 'top': t, 'width': w, 'height': h}
             return selection
         except subprocess.CalledProcessError as e:
-            print(f"Error selecting region with xrectsel: {e}")
+            logger.error(f"Error selecting region with xrectsel: {e}")
             sys.exit(1)
         except FileNotFoundError:
-            print("xrectsel is not installed. Please install it using your package manager (e.g., sudo apt-get install xrectsel).")
+            logger.error("xrectsel is not installed. Please install it using your package manager (e.g., sudo apt-get install xrectsel).")
             sys.exit(1)
         except Exception as e:
-            print(f"Unexpected error during region selection: {e}")
+            logger.exception(f"Unexpected error during region selection: {e}")
+
             sys.exit(1)
 
 class ScreenshotCapture:
@@ -246,7 +247,7 @@ class ClipboardManager:
         elif OS_NAME == 'Linux':
             ClipboardManager._copy_image_to_clipboard_linux(image)
         else:
-            print("Unsupported OS for clipboard operations.")
+            logger.error("Unsupported OS for clipboard operations.")
 
     @staticmethod
     def _copy_image_to_clipboard_windows(image):
@@ -261,7 +262,7 @@ class ClipboardManager:
             win32clipboard.SetClipboardData(win32clipboard.CF_DIB, data)  # type: ignore
             win32clipboard.CloseClipboard()  # type: ignore
         except Exception as e:
-            print(f"Failed to copy image to clipboard: {e}")
+            logger.exception(f"Failed to copy image to clipboard: {e}")
 
     @staticmethod
     def _copy_image_to_clipboard_linux(image):
@@ -269,13 +270,13 @@ class ClipboardManager:
             # Save image to a temporary PNG file
             temp_file_name = "/tmp/screenshot_merger.png"
             with open(temp_file_name, "wb") as temp_file:
-                image.save(temp_file, format="PNG")
+                image.save(temp_file)
             bash_cmd = f"xclip -selection clipboard -t image/png -i {temp_file_name}"
-            subprocess.run(bash_cmd, shell=True)
+            subprocess.run(shlex.split(bash_cmd))
         except FileNotFoundError:
-            print("xclip is not installed. Please install it using your package manager (e.g., sudo apt-get install xclip).")
+            logger.error("xclip is not installed. Please install it using your package manager (e.g., sudo apt-get install xclip).")
         except Exception as e:
-            print(f"Failed to copy image to clipboard: {e}")
+            logger.exception(f"Failed to copy image to clipboard: {e}")
 
 class KeyboardListener:
     def __init__(self):
@@ -383,13 +384,13 @@ def main():
         time.sleep(0.1)  # Prevent busy waiting
 
     if merged_image is None:
-        print("No screenshots captured. Exiting.")
+        logger.error("No screenshots captured. Exiting.")
         sys.exit(0)
 
-    print("\nCopying merged image to clipboard...")
+    logger.info("\nCopying merged image to clipboard...")
     clipboard_manager = ClipboardManager()
     clipboard_manager.copy_image_to_clipboard(merged_image)
-    print("Merged image copied to clipboard successfully.")
+    logger.info("Merged image copied to clipboard successfully.")
 
 if __name__ == "__main__":
     main()
