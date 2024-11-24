@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
 import re
-import textwrap
 import os
-import shlex
-import subprocess
-from openai import OpenAI
 import sys
+import time
+from loguru import logger
+import pyperclip
 import wx
+from openai import OpenAI
 
 client = OpenAI()
 
@@ -27,7 +27,6 @@ Remember:
 - Variation should explore informal language or slang as used in the original where applicable.
 
 Create 5 different versions of the text based on these flexible yet prioritized guidelines. Provide each variation inside its own <output> tags, without additional commentary or explanations."""
-
 
 EXAMPLE_PROMPTS = [
     # First example
@@ -86,7 +85,6 @@ EXAMPLE_PROMPTS = [
 <output>Do you know if the **Q3 results** have come out? I've been awaiting them for ages and still nothing. This is hindering our analysis!</output>""".strip()}
 ]
 
-
 def send_request(sentence):
     messages = [{"role": "system", "content": SYSTEM}]
     for example in EXAMPLE_PROMPTS:
@@ -114,10 +112,7 @@ def send_request(sentence):
 
     return outputs
 
-import wx
-
 def show_selection_dialog(options):
-    app = wx.App()
     dialog = wx.SingleChoiceDialog(None, "Choose one of the options:", "Select an Option", options)
 
     if dialog.ShowModal() == wx.ID_OK:
@@ -125,22 +120,30 @@ def show_selection_dialog(options):
     else:
         selected_option = None
     dialog.Destroy()
-    app.MainLoop()
     return selected_option
 
-clipboard = subprocess.run(shlex.split("xclip -o -selection clipboard"), capture_output=True).stdout.decode("utf-8")
-if not clipboard:
-    sys.exit(1)
+def main():
+    wx.App(False)  # Initialize the wx App
 
-improved_sentences = send_request(clipboard)
+    # Read data from the clipboard using pyperclip
+    clipboard = pyperclip.paste().strip()
+    if not clipboard:
+        logger.error("Clipboard is empty.")
+        sys.exit(1)
 
-if improved_sentences:
-    selected_sentence = show_selection_dialog(improved_sentences)
-    if selected_sentence:
-        improved_sentence = selected_sentence
+    # Call the API
+    improved_sentences = send_request(clipboard)
+
+    # Show selection dialog
+    if improved_sentences:
+        selected_sentence = show_selection_dialog(improved_sentences)
+        improved_sentence = selected_sentence if selected_sentence else clipboard
     else:
-        improved_sentence = clipboard  # revert if no selection made
-else:
-    improved_sentence = clipboard  # revert if no improvements generated
+        improved_sentence = clipboard
 
-subprocess.run(shlex.split("xclip -i -selection clipboard"), input=improved_sentence.encode('utf-8'))
+    # Set data to the clipboard using pyperclip
+    pyperclip.copy(improved_sentence)
+    logger.info(f"Clipboard text '{improved_sentence}' set successfully.")
+
+if __name__ == "__main__":
+    main()
