@@ -4,11 +4,9 @@ import textwrap
 import os
 import shlex
 import subprocess
-import tkinter
-from tkinter import simpledialog
 from openai import OpenAI
 import sys
-from loguru import logger
+import wx
 
 client = OpenAI()
 
@@ -97,7 +95,7 @@ def send_request(sentence):
 
     response = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=messages, # type: ignore
+        messages=messages,  # type: ignore
         temperature=1,
         frequency_penalty=0,
         presence_penalty=0,
@@ -109,37 +107,30 @@ def send_request(sentence):
     content = response.choices[0].message.content
 
     # Use regex to find all outputs within <output> tags
-    outputs = re.findall(r'<output>(.*?)</output>', content, re.DOTALL) # type: ignore
+    outputs = re.findall(r'<output>(.*?)</output>', content, re.DOTALL)  # type: ignore
 
     # Strip any leading/trailing whitespace from each output
     outputs = [output.strip() for output in outputs]
 
     return outputs
 
+import wx
+
 def show_selection_dialog(options):
-    root = tkinter.Tk()
-    root.withdraw()  # Hide the main window
+    app = wx.App()
+    dialog = wx.SingleChoiceDialog(None, "Choose one of the options:", "Select an Option", options)
 
-    selected_option = simpledialog.askstring(
-        "Select an Option",
-        "Choose one of the options:\n\n" + "\n".join(f"{i+1}. {option}" for i, option in enumerate(options)),
-        parent=root
-    )
-
-    if selected_option and selected_option.isdigit():
-        index = int(selected_option) - 1
-        if 0 <= index < len(options):
-            return options[index]
-    elif selected_option in options:
-        return selected_option
-
-    return None
+    if dialog.ShowModal() == wx.ID_OK:
+        selected_option = dialog.GetStringSelection()
+    else:
+        selected_option = None
+    dialog.Destroy()
+    app.MainLoop()
+    return selected_option
 
 clipboard = subprocess.run(shlex.split("xclip -o -selection clipboard"), capture_output=True).stdout.decode("utf-8")
 if not clipboard:
     sys.exit(1)
-
-subprocess.run(shlex.split("xclip -i -selection clipboard"), input="".encode("utf-8"))
 
 improved_sentences = send_request(clipboard)
 
