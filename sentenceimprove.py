@@ -1,221 +1,139 @@
 #!/usr/bin/env python3
+import re
 import textwrap
 import os
 import shlex
 import subprocess
+import tkinter
+from tkinter import simpledialog
 from openai import OpenAI
 import sys
 from loguru import logger
-import gi
-
-gi.require_version('Gtk', '4.0')
-from gi.repository import Gtk, Gdk, GLib
 
 client = OpenAI()
 
-SYSTEM = """You are tasked with analyzing and reconstructing a given text. Your goal is to improve its clarity and structure while preserving the core message and tone. Follow these instructions to reconstruct the text:
+SYSTEM = """You are tasked with analyzing and reconstructing a given text. Your goal is to create varied versions that maintain the core message and tone, exploring different structures and expressions. These instructions serve as guidelines, with varying levels of requirement for adherence:
 
-1. Use the same language as the original text.
-2. Improve any unclear or awkwardly structured sentences.
-3. Maintain the essential message and intent of the original text.
-4. Refine the overall sentence structure and syntax for better readability.
-5. Keep the same tone and style, as if the same person wrote it.
-6. Preserve any unique formatting (e.g., all lowercase, all uppercase, punctuation, etc) from the original text.
-7. If words in a different language than the main one appear, translate them to match the main language of the text, as long as it's obvious it's a request from the user.
-8. Ignore minor typos or spelling errors (keeping them in the output) unless they significantly impact clarity.
-9. If there are technical terms or proper nouns, ensure they are spelled correctly (e.g.: a function name will be put inside backticks in the output).
-10. Don't change punctuation differently than the input message. Keep capital letters the same way as the input.
+1. Use the same language as the original text. *(Required for all versions)*
+2. Each version should have distinct sentence structures or expressions, preserving the core intent. *(Required for all versions)*
+3. Maintain the essential message and meaning of the original text. *(At least 4 out of 5 versions)*
+4. Explore diverse syntax and expression for variety in output. *(Required for all versions)*
+5. Ensure it genuinely sounds like it originates from the same author, maintaining their unique voice. *(At least 4 out of 5 versions)*
+6. Preserve any unique formatting (e.g., all lowercase, all uppercase, punctuation, etc.) from the original text. *(At least 3 out of 5 versions)*
+7. Translate words in a different language that are enclosed in square brackets ([]), ensuring translations reflect the context rather than being literal. *(Required for all versions)*
+8. Ignore minor typos or spelling errors, retaining them unless they significantly affect clarity. *(At least 3 out of 5 versions)*
+9. Use proper Markdown structures where applicable, such as wrapping code in code blocks or enumerating items into lists if it enhances readability and makes sense. *(At least 3 out of 5 versions)*
 
 Remember:
-- The goal is to make the text clearer and more coherent while sounding like it came from the same author.
-- If the original text uses informal language or slang, maintain that style in your reconstruction.
+- The objective is to generate varied yet coherent versions, with each appearing as though authored by the original individual.
+- Variation should explore informal language or slang as used in the original where applicable.
 
-Here are some examples of input and output:
+Create 5 different versions of the text based on these flexible yet prioritized guidelines. Provide each variation inside its own <output> tags, without additional commentary or explanations."""
 
-<example>
-<input>We get the pseudocode of old attack/dodge methods on ghidra and do a fuzzy similarity search something like that of that versus the pseucode of the new ver.\n\nSo if the score is high it means the method didnt change much, which means its like to be t he righjt one</input>
-<output>We get the pseudocode of the old attack and dodge methods using Ghidra and calculate the code similarity against methods of the new version.\n\nIf the similarity score is high, it means that their code is pretty similar, suggesting that it's the same method</output>
-</example>
-
-<example>
-<input>"you can also do a traceMethodsByArgType or traceClassesByPattern and dodge like 7 times in a raid, then copy the entire trace and look for a method that was called only 7 times"</input>
-<output>"you can also use `traceMethodsByArgType` or `traceClassesByPattern`, then dodge 7 consecutive times in a raid. afterwards look for the method that was called exactly seven times within that trace"</output>
-</example>
-
-<example>
-<input>eu estou sempre muito ocupado, então já pedi à minha assistente para entrar em contato contig amanha. Se achar mewlhor, também podes falar com ela primeiro. O nome dela é Thaylana"</input>
-<output>eu estou sempre bastante ocupado, então já falei à minha assistente, Thaylana, para que amanhã entre em contato contigo. Se preferir podes falar com ela antes também</output>
-</example>
-
-Now, reconstruct the text below based on these instructions. Provide the text inside <output> tags, without any additional commentary or explanations. Generate 3 different versions of the reconstructed text, each enclosed in separate <output> tags."""
-
-import textwrap
 
 EXAMPLE_PROMPTS = [
     # First example
     {"role": "user",
      "content": "<input>Do you still have the findings of the reversion of the communication protocol? I work with RE and would love to play around with that 😏</input>"},
     {"role": "assistant",
-     "content": textwrap.dedent("""
-        <output>Do you still have your findings from reverse engineering the communication protocol? I work in reverse engineering and would love to explore that 😏</output>
-        <output>I work with reverse engineering and would love to experiment with it 😏. Do you still have the results from the communication protocol reversion?</output>
-        <output>Do you still have the results from the reversion of the communication protocol? I work with RE and would be excited to explore that 😏</output>
-        <output>Do you still have the results from reversing the communication protocol? I specialize in reverse engineering and would love to experiment with them. 😏</output>
-        <output>Do you still have the results from the communication protocol reversal? I work in reverse engineering and would love to dig into it 😏</output>""".strip())},
+     "content": """
+<output>Do you still have the results from reversing the communication protocol? I work in `RE` and would love to experiment with them 😏</output>
+<output>Hey, do you happen to hold onto the findings from the communication protocol reversal? As someone who works with `RE`, I'd love to play around with that 😏</output>
+<output>Do you still possess the communication protocol reversal findings? I work with `RE` and am eager to mess around with them 😏</output>
+<output>By any chance, do you still have the insights from the reversed communication protocol? I'm into `RE` and would love to tinker with it 😏</output>
+<output>Do you have the findings from when the communication protocol was reversed? Being in `RE`, I'd really like to dive into that 😏</output>""".strip()},
 
     # Second example
     {"role": "user",
      "content": "<input>Can you share the recent sales reports? I'm preparing for tomorrow's meeting, and it would really help.</input>"},
     {"role": "assistant",
-     "content": textwrap.dedent("""
-        <output>Could you send me the updated sales reports? I need them for a meeting tomorrow and would appreciate it.</output>
-        <output>I'm preparing for tomorrow's meeting. Could you share the sales reports when you get a chance?</output>
-        <output>Are the recent sales reports available? I'd like to review them before the meeting.</output>
-        <output>I could really use the sales data for tomorrow's meeting. Can you send it over?</output>
-        <output>Any chance you can provide me with the sales reports? They'd be useful for tomorrow's discussion.</output>""".strip())},
+     "content": """
+<output>Could you send me the latest **sales reports**? I'm getting ready for tomorrow's meeting, and they would be a big help.</output>
+<output>Would you mind sharing the recent _sales reports_? I'm preparing for the meeting tomorrow, and that information would really assist me.</output>
+<output>Hey, can you provide the most recent `sales reports`? They'd be super helpful as I prep for tomorrow's meeting.</output>
+<output>Do you have the latest sales data? I'm gearing up for the meeting tomorrow, and it would be really useful.</output>
+<output>Any chance you could send over the recent sales reports? I'm getting ready for tomorrow's meeting, and I'd appreciate it.</output>""".strip()},
 
     # Third example
     {"role": "user",
      "content": "<input>have you checked out the new UI? we need feedback on this asap. let me know when you get a chance</input>"},
     {"role": "assistant",
-     "content": textwrap.dedent("""
-        <output>Have you had a look at the new UI? we could really use your feedback soon. let me know when you're able to review it</output>
-        <output>We need feedback on the new UI as soon as possible. please take a look and tell me what you think</output>
-        <output>Could you check out the new UI? your input is needed urgently, so please let me know when you have time</output>
-        <output>Have you reviewed the new UI design yet? we need feedback at your earliest convenience</output>
-        <output>Let me know when you've had a chance to look at the UI changes. your feedback is important and we need it quickly</output>""".strip())},
+     "content": """
+<output>have you taken a look at the new **UI**? we need feedback on this asap. let me know when you get a chance</output>
+<output>have you checked out the updated `user interface`? we're in need of feedback asap. hit me up when you're able</output>
+<output>did you review the new ui yet? we urgently need your feedback. please inform me when you can</output>
+<output>have you explored the new **UI**? feedback is needed asap. let me know when you have a moment</output>
+<output>hey, did you get a chance to check out the new UI? we could use your feedback asap. give me a shout when you're free</output>""".strip()},
 
     # Fourth example (multi-line input)
     {"role": "user",
      "content": "<input>hey! did you finish reviewing the documentation? we're hoping to finalize the project scope by the end of the week.\n\nif you can, try to send me your thoughts by thursday. thx!</input>"},
     {"role": "assistant",
-     "content": textwrap.dedent("""
-        <output>hi! just checking in—have you finished looking over the documentation? we want to finalize the project scope by week's end.</output>
-        <output>did you get a chance to review the docs? if possible, please send over your feedback by thursday so we can move forward with the project.</output>
-        <output>we need to finalize the project scope this week. can you send me your review of the documentation by thursday?</output>
-        <output>if you've finished reviewing the documentation, could you share your thoughts by thursday? we're wrapping up the project scope soon. thx!!</output>
-        <output>please let me know when you've finished reviewing the documents. we're hoping to have everything ready for final approval by week's end. thank you</output>""".strip())},
+     "content": """
+<output>hey! did you complete the documentation review? we're aiming to finalize the project scope by week's end.\n\nif possible, please send me your feedback by **thursday**. thx!</output>
+<output>hey! have you wrapped up looking over the documentation? we're hoping to lock down the project scope before the week is out.\n\nif you can, shoot me your thoughts by **thursday**. thanks!</output>
+<output>hey! did you finish going through the docs? we want to finalize the project's scope by the end of this week.\n\nplease try to send me your input by **thursday** if you can. thx!</output>
+<output>hey! have you completed your review of the documentation? we're planning to finalize the project scope by **friday**.\n\nif you could get me your thoughts by **thursday**, that'd be great. thank you!</output>
+<output>hey! finished checking out the documentation yet? we're aiming to wrap up the project scope by week's end.\n\nif possible, send me your feedback by **thursday**. thx!</output>""".strip()},
 
     # Fifth example (varying structure drastically)
     {"role": "user",
      "content": "<input>Are the Q3 results out yet? I've been waiting on them for ages and still no word. This is holding up our analysis!</input>"},
     {"role": "assistant",
-     "content": textwrap.dedent("""
-        <output>Do we have the Q3 numbers yet? I need them to move forward with the analysis, and they've been delayed for too long.</output>
-        <output>Still waiting on the Q3 results here. They're overdue and holding back our analysis process.</output>
-        <output>The Q3 report is holding up our work. When can we expect to receive it?</output>
-        <output>We really need those Q3 results for our analysis. Have they been released yet?</output>
-        <output>Has there been any update on the Q3 data? It's becoming a major blocker for our analysis!</output>""".strip())}
+     "content": """
+<output>Are the **Q3 results** available yet? I've been waiting forever and haven't heard anything. This is delaying our analysis!</output>
+<output>Have the `Q3 results` been released yet? I've been waiting on them for ages with no updates. Our analysis is being held up!</output>
+<output>Any news on the **Q3 results**? It's been ages, and I still haven't heard a thing. This is stalling our analysis!</output>
+<output>Are the **third-quarter results** out yet? I've been waiting endlessly without any word. This is impeding our analysis!</output>
+<output>Do you know if the **Q3 results** have come out? I've been awaiting them for ages and still nothing. This is hindering our analysis!</output>""".strip()}
 ]
 
 
-
 def send_request(sentence):
+    messages = [{"role": "system", "content": SYSTEM}]
+    for example in EXAMPLE_PROMPTS:
+        messages.append({"role": example["role"], "content": example["content"]})
+    messages.append({"role": "user", "content": "<input>" + sentence + "</input>"})
+
     response = client.chat.completions.create(
         model="gpt-4o-mini",
-        messages=[
-            {"role": "system", "content": SYSTEM},
-            {"role": "user", "content": "<input>" + sentence + "</input>"},
-        ],
+        messages=messages, # type: ignore
         temperature=1,
-        frequency_penalty=0.5,
-        presence_penalty=0.5,
+        frequency_penalty=0,
+        presence_penalty=0,
         max_tokens=2000,
-        n=2  # Request 5 different completions
+        n=1
     )
 
-    # Extract the content from the responses
-    contents = [choice.message.content for choice in response.choices]
+    # Extract the content from the response
+    content = response.choices[0].message.content
 
-    # Find the content within <output> tags for each response
-    outputs = []
-    for content in contents:
-        start_tag = "<output>"
-        end_tag = "</output>"
-        start_index = content.find(start_tag) + len(start_tag)
-        end_index = content.find(end_tag)
+    # Use regex to find all outputs within <output> tags
+    outputs = re.findall(r'<output>(.*?)</output>', content, re.DOTALL) # type: ignore
 
-        if start_index >= len(start_tag) and end_index > -1:
-            outputs.append(content[start_index:end_index].strip())
-        else:
-            outputs.append(content.replace("<output>", "").replace("</output>", "").strip())
+    # Strip any leading/trailing whitespace from each output
+    outputs = [output.strip() for output in outputs]
 
     return outputs
 
+def show_selection_dialog(options):
+    root = tkinter.Tk()
+    root.withdraw()  # Hide the main window
 
-class ContextMenuWindow(Gtk.ApplicationWindow):
-    def __init__(self, app, options):
-        super().__init__(application=app, title="Select an option")
-        self.set_default_size(300, -1)
-        self.options = options
-        self.selected_option = None
+    selected_option = simpledialog.askstring(
+        "Select an Option",
+        "Choose one of the options:\n\n" + "\n".join(f"{i+1}. {option}" for i, option in enumerate(options)),
+        parent=root
+    )
 
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        self.set_child(box)
+    if selected_option and selected_option.isdigit():
+        index = int(selected_option) - 1
+        if 0 <= index < len(options):
+            return options[index]
+    elif selected_option in options:
+        return selected_option
 
-        for i, option in enumerate(self.options, start=1):
-            button = Gtk.Button(label=f"Option {i}")
-            button.connect("clicked", self.on_option_clicked, option)
-            box.append(button)
-
-        self.set_resizable(False)
-        self.set_decorated(False)
-
-    def on_option_clicked(self, button, option):
-        self.selected_option = option
-        self.close()
-
-class ContextMenuApp(Gtk.Application):
-    def __init__(self, options):
-        super().__init__(application_id="com.example.ContextMenu")
-        self.options = options
-        self.selected_option = None
-
-    def do_activate(self):
-        # Create a hidden window to serve as a parent
-        self.window = Gtk.ApplicationWindow(application=self, title="Hidden Window")
-        self.window.set_default_size(1, 1)
-        self.window.set_opacity(0)  # Make the window invisible
-
-        self.window.present()
-
-        # Create the popover menu
-        popover = Gtk.Popover()
-        box = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=6)
-        popover.set_child(box)
-
-        for i, option in enumerate(self.options, start=1):
-            button = Gtk.Button(label=f"Option {i}")
-            button.connect("clicked", self.on_option_clicked, option)
-            box.append(button)
-
-        # Get the current mouse position
-        display = Gdk.Display.get_default()
-        seat = display.get_default_seat()
-        pointer = seat.get_pointer()
-        _, x, y = pointer.get_position()
-
-        # Position and show the popover
-        popover.set_pointing_to(Gdk.Rectangle(x, y, 1, 1))
-        popover.set_position(Gtk.PositionType.BOTTOM)
-        popover.set_autohide(True)
-        popover.popup()
-
-        # Add a timeout to quit the application if no selection is made
-        GLib.timeout_add_seconds(60, self.on_timeout)
-
-    def on_option_clicked(self, button, option):
-        self.selected_option = option
-        self.quit()
-
-    def on_timeout(self):
-        self.quit()
-        return False
-
-def show_context_menu(options):
-    app = ContextMenuApp(options)
-    app.run()
-    return app.selected_option
+    return None
 
 clipboard = subprocess.run(shlex.split("xclip -o -selection clipboard"), capture_output=True).stdout.decode("utf-8")
 if not clipboard:
@@ -226,7 +144,7 @@ subprocess.run(shlex.split("xclip -i -selection clipboard"), input="".encode("ut
 improved_sentences = send_request(clipboard)
 
 if improved_sentences:
-    selected_sentence = show_context_menu(improved_sentences)
+    selected_sentence = show_selection_dialog(improved_sentences)
     if selected_sentence:
         improved_sentence = selected_sentence
     else:
