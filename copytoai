@@ -9,75 +9,122 @@ else
 fi
 
 # Ask the user for a directory to search in with a default value of the current directory
-directory=$(zenity --entry --title="Directory Search" --text="Enter the directory to search in:" --entry-text="$PWD")
+# This directory serves as the base for relative arguments OR the starting point for yad --file
+directory=$(yad --entry --title="Base Directory" \
+    --text="Enter the base directory for operations or starting point for selection:" \
+    --entry-text="$PWD" --width=500)
 
-# If the user cancels the operation, exit
-if [ $? -ne 0 ]; then
-    zenity --info --text="Operation canceled."
+# If the user cancels or enters nothing, exit
+if [ $? -ne 0 ] || [ -z "$directory" ]; then
+    yad --info --text="Operation canceled or no directory entered." --width=300 --timeout=3 --no-buttons &
     exit 1
 fi
 
-# Initialize arrays
-files=()
-directories=()
+# Ensure the directory exists
+if [ ! -d "$directory" ]; then
+    yad --error --text="Directory '$directory' does not exist. Exiting." --width=400
+    exit 1
+fi
+# Convert to absolute path to avoid issues later
+directory=$(realpath "$directory")
+
+
+# This array will hold the absolute paths of all individual files to be processed
+final_files_to_process=()
 
 if $use_args; then
-    # Process the arguments
+    # Process the command-line arguments (assumed relative to $directory)
     for arg in "${args[@]}"; do
-        full_path="$directory/$arg"
-        if [ -e "$full_path" ]; then
-            rel_path=${full_path#"$directory"/}
-            if [ -d "$full_path" ]; then
-                directories+=("$rel_path")
-            elif [ -f "$full_path" ]; then
-                files+=("$rel_path")
-            else
-                zenity --error --text="The item '$arg' is not a regular file or directory."
-                exit 1
-            fi
+        # Construct full path from base directory and argument
+        # Handle args that might be absolute paths already
+        if [[ "$arg" == /* ]]; then
+            full_path_arg="$arg"
         else
-            zenity --error --text="The item '$arg' does not exist under '$directory'."
+            full_path_arg="$directory/$arg"
+        fi
+        full_path_arg=$(realpath -m "$full_path_arg") # Resolve ., .. and //
+
+        if [ ! -e "$full_path_arg" ]; then
+            yad --error --text="The item '$arg' (resolved to '$full_path_arg') does not exist." --width=500
+            exit 1
+        fi
+
+        if [ -d "$full_path_arg" ]; then
+            # Argument is a directory, find all files within it
+            while IFS= read -r -d $'\0' found_file; do
+                final_files_to_process+=("$found_file")
+            done < <(find "$full_path_arg" -type f ! -path "*/.git/*" -print0)
+        elif [ -f "$full_path_arg" ]; then
+            # Argument is a file
+            final_files_to_process+=("$full_path_arg")
+        else
+            yad --error --text="The item '$arg' (resolved to '$full_path_arg') is not a regular file or directory." --width=500
             exit 1
         fi
     done
 else
-    # Find all files, ignoring .git directories, and strip the directory path
-    readarray -t files < <(find "$directory" -type f ! -path "*/.git/*" | sed "s|$directory/||" | sort)
+    # No arguments: Use yad --file for interactive selection
+    # The --filename option sets the starting directory for the dialog
+    # Removed --directory flag from yad --file to allow selecting both files and directories
+    selected_paths_raw=$(yad --file --multiple \
+        --title="Select Files and/or Directories" \
+        --text="Select files or entire directories. Files within selected directories will be included." \
+        --filename="$directory/" --separator=$'\n' --width=800 --height=600)
 
-    # Find all directories, ignoring .git directories, and strip the directory path
-    readarray -t directories < <(find "$directory" -type d ! -path "*/.git/*" | sed "s|$directory/||" | sort)
+    # Check if the user canceled or selected nothing
+    if [ $? -ne 0 ] || [ -z "$selected_paths_raw" ]; then
+        yad --info --text="Operation canceled or no selection made." --width=300 --timeout=3 --no-buttons &
+        exit 1
+    fi
+
+    IFS=$'\n' # Set Internal Field Separator to newline for the loop below
+    for selected_path in $selected_paths_raw; do
+        if [ -z "$selected_path" ]; then # Skip empty lines if separator results in them
+            continue
+        fi
+        # selected_path is an absolute path from yad
+        if [ -d "$selected_path" ]; then
+            # It's a directory, find all files within it (recursively), ignoring .git
+            while IFS= read -r -d $'\0' file_in_dir; do
+                final_files_to_process+=("$file_in_dir")
+            done < <(find "$selected_path" -type f ! -path "*/.git/*" -print0)
+        elif [ -f "$selected_path" ]; then
+            # It's a file, add it directly
+            final_files_to_process+=("$selected_path")
+        else
+            # This case might occur if a selected item is removed between selection and processing
+            yad --warning --text="Skipping unrecognized or inaccessible item from selection: $selected_path" --width=500
+        fi
+    done
+    unset IFS # Reset IFS to default
 fi
 
-# Check if any file or directory is found
-if [ ${#files[@]} -eq 0 ] && [ ${#directories[@]} -eq 0 ]; then
-    zenity --error --text="No files or directories found. Exiting."
+
+# Check if any file was ultimately selected/found to process
+if [ ${#final_files_to_process[@]} -eq 0 ]; then
+    yad --error --text="No files found to process. Exiting." --width=300
     exit 1
 fi
 
-# Combine files and directories, with directories at the bottom
-items=("${files[@]}" "${directories[@]}")
-
-# Let the user select from the list of files and directories
-selected_items=$(zenity --list --title="Select Files and Directories" --column="Files/Directories" "${items[@]}" --multiple --separator=" ")
-
-# Check if any item is selected
-if [ -z "$selected_items" ]; then
-    zenity --error --text="No file or directory selected. Exiting."
-    exit 1
-fi
+# Sort and remove duplicates
+IFS=$'\n' readarray -t final_files_to_process < <(printf "%s\n" "${final_files_to_process[@]}" | sort -u)
+unset IFS
 
 # Initialize the string to be copied to the clipboard
 clipboard_content=""
 
 # Function to get the language identifier based on the file extension
 get_language() {
-    case "$1" in
+    local filename=$(basename -- "$1")
+    case "$filename" in
         *.sh) echo "bash" ;;
         *.py) echo "python" ;;
         *.js) echo "javascript" ;;
         *.java) echo "java" ;;
         *.c) echo "c" ;;
         *.cpp) echo "cpp" ;;
+        *.h) echo "c" ;;
+        *.hpp) echo "cpp" ;;
         *.html) echo "html" ;;
         *.css) echo "css" ;;
         *.json) echo "json" ;;
@@ -85,23 +132,69 @@ get_language() {
         *.php) echo "php" ;;
         *.rb) echo "ruby" ;;
         *.go) echo "go" ;;
-        *) echo "" ;;
+        *.md) echo "markdown" ;;
+        *.txt) echo "text" ;;
+        *.log) echo "log" ;;
+        *.sql) echo "sql" ;;
+        *.yaml|*.yml) echo "yaml" ;;
+        *.ts) echo "typescript" ;;
+        *.rs) echo "rust" ;;
+        *.kt) echo "kotlin" ;;
+        *.swift) echo "swift" ;;
+        # Add more extensions as needed
+        *) echo "" ;; # Default to no language hint, or "text"
     esac
 }
 
-# Loop through each selected item
-for item in $selected_items; do
-    full_path="$directory/$item"
-    if [ -d "$full_path" ]; then
-        clipboard_content+="$item/\n\n"
-    else
-        language=$(get_language "$item")
-        clipboard_content+="$item\n\`\`\`$language\n$(cat "$full_path")\n\`\`\`\n\n"
+# Loop through each final file path
+for full_path in "${final_files_to_process[@]}"; do
+    # Determine the path to display in the clipboard content
+    item_for_display=""
+    # Try to make it relative to the initial $directory
+    if [[ "$full_path" == "$directory"/* ]]; then
+        item_for_display="${full_path#"$directory/"}"
+    elif [ "$full_path" == "$directory" ]; then # Should not happen for files, but as a guard
+        item_for_display="."
     fi
+
+    # If not made relative (i.e., not under $directory, or $directory was / and path is /foo)
+    # or if it's an absolute path resulting from the above
+    if [ -z "$item_for_display" ] || [[ "$item_for_display" == /* ]]; then
+        # Try to make it relative to the Current Working Directory ($PWD)
+        item_for_display_candidate=$(realpath --relative-to="$PWD" "$full_path" 2>/dev/null)
+        if [ $? -eq 0 ] && [[ "$item_for_display_candidate" != /* ]] && [[ "$item_for_display_candidate" != "" ]]; then
+            item_for_display="$item_for_display_candidate"
+        else
+            # Fallback to basename if not relative to PWD or realpath failed
+            item_for_display=$(basename "$full_path")
+        fi
+    fi
+    # Final fallback if item_for_display is somehow empty
+    [ -z "$item_for_display" ] && item_for_display="$full_path"
+
+
+    language=$(get_language "$full_path")
+    # Append file path, language-tagged code block, and its content
+    # Using literal \n here, which will be interpreted by "echo -ne" later
+    clipboard_content+="$item_for_display\n\`\`\`$language\n"
+    if [ -r "$full_path" ]; then
+        # Preserve shebang if present and then cat the rest, or just cat
+        # This is complex for a general script; for now, simple cat is fine.
+        clipboard_content+="$(cat "$full_path")"
+    else
+        clipboard_content+="[Error: Could not read file $full_path]"
+    fi
+    clipboard_content+="\n\`\`\`\n\n"
 done
 
 # Copy the content to the clipboard using xclip
-echo -ne "$clipboard_content" | xclip -selection clipboard
+# Using echo -ne to interpret \n sequences in $clipboard_content and prevent extra trailing newline
+if echo -ne "$clipboard_content" | xclip -selection clipboard -i; then
+    # Notify the user that the content is copied
+    yad --info --text="The content of selected file(s) has been copied to the clipboard." --width=450 --timeout=3 --no-buttons &
+else
+    yad --error --text="Failed to copy to clipboard. Is xclip installed and configured?" --width=450
+    exit 1
+fi
 
-# Notify the user that the content is copied
-zenity --info --text="The content has been copied to the clipboard."
+exit 0
