@@ -9,7 +9,6 @@ else
 fi
 
 # Ask the user for a directory to search in with a default value of the current directory
-# This directory serves as the base for relative arguments OR the starting point for yad --file
 directory=$(yad --entry --title="Base Directory" \
     --text="Enter the base directory for operations or starting point for selection:" \
     --entry-text="$PWD" --width=500)
@@ -29,14 +28,34 @@ fi
 directory=$(realpath "$directory")
 
 
-# This array will hold the absolute paths of all individual files to be processed
+# This array will hold the absolute paths of all individual text files to be processed
 final_files_to_process=()
+binary_files_skipped=0
+
+# --- NEW FUNCTION TO CHECK FOR TEXT FILES ---
+# Uses the 'file' command to check the MIME type.
+# Returns 0 (true) if the file is a text file, 1 (false) otherwise.
+is_text_file() {
+    local file_path="$1"
+    # Ensure file exists and is readable before checking
+    if [ ! -f "$file_path" ] || [ ! -r "$file_path" ]; then
+        return 1
+    fi
+
+    # Check if the MIME type starts with "text/"
+    if [[ $(file -b --mime-type "$file_path") == text/* ]]; then
+        return 0
+    else
+        return 1
+    fi
+}
+# --- END OF NEW FUNCTION ---
+
 
 if $use_args; then
     # Process the command-line arguments (assumed relative to $directory)
     for arg in "${args[@]}"; do
         # Construct full path from base directory and argument
-        # Handle args that might be absolute paths already
         if [[ "$arg" == /* ]]; then
             full_path_arg="$arg"
         else
@@ -52,11 +71,19 @@ if $use_args; then
         if [ -d "$full_path_arg" ]; then
             # Argument is a directory, find all files within it
             while IFS= read -r -d $'\0' found_file; do
-                final_files_to_process+=("$found_file")
+                if is_text_file "$found_file"; then
+                    final_files_to_process+=("$found_file")
+                else
+                    ((binary_files_skipped++))
+                fi
             done < <(find "$full_path_arg" -type f ! -path "*/.git/*" -print0)
         elif [ -f "$full_path_arg" ]; then
-            # Argument is a file
-            final_files_to_process+=("$full_path_arg")
+            # Argument is a file, check if it's text
+            if is_text_file "$full_path_arg"; then
+                final_files_to_process+=("$full_path_arg")
+            else
+                ((binary_files_skipped++))
+            fi
         else
             yad --error --text="The item '$arg' (resolved to '$full_path_arg') is not a regular file or directory." --width=500
             exit 1
@@ -64,11 +91,9 @@ if $use_args; then
     done
 else
     # No arguments: Use yad --file for interactive selection
-    # The --filename option sets the starting directory for the dialog
-    # Removed --directory flag from yad --file to allow selecting both files and directories
     selected_paths_raw=$(yad --file --multiple \
         --title="Select Files and/or Directories" \
-        --text="Select files or entire directories. Files within selected directories will be included." \
+        --text="Select files or entire directories. Binary files will be ignored." \
         --filename="$directory/" --separator=$'\n' --width=800 --height=600)
 
     # Check if the user canceled or selected nothing
@@ -79,21 +104,28 @@ else
 
     IFS=$'\n' # Set Internal Field Separator to newline for the loop below
     for selected_path in $selected_paths_raw; do
-        if [ -z "$selected_path" ]; then # Skip empty lines if separator results in them
+        if [ -z "$selected_path" ]; then
             continue
         fi
-        # selected_path is an absolute path from yad
+
         if [ -d "$selected_path" ]; then
-            # It's a directory, find all files within it (recursively), ignoring .git
+            # It's a directory, find all files, filtering for text files
             while IFS= read -r -d $'\0' file_in_dir; do
-                final_files_to_process+=("$file_in_dir")
+                if is_text_file "$file_in_dir"; then
+                    final_files_to_process+=("$file_in_dir")
+                else
+                    ((binary_files_skipped++))
+                fi
             done < <(find "$selected_path" -type f ! -path "*/.git/*" -print0)
         elif [ -f "$selected_path" ]; then
-            # It's a file, add it directly
-            final_files_to_process+=("$selected_path")
+            # It's a file, check if it's text before adding
+            if is_text_file "$selected_path"; then
+                final_files_to_process+=("$selected_path")
+            else
+                ((binary_files_skipped++))
+            fi
         else
-            # This case might occur if a selected item is removed between selection and processing
-            yad --warning --text="Skipping unrecognized or inaccessible item from selection: $selected_path" --width=500
+            yad --warning --text="Skipping unrecognized or inaccessible item: $selected_path" --width=500
         fi
     done
     unset IFS # Reset IFS to default
@@ -102,7 +134,11 @@ fi
 
 # Check if any file was ultimately selected/found to process
 if [ ${#final_files_to_process[@]} -eq 0 ]; then
-    yad --error --text="No files found to process. Exiting." --width=300
+    message="No text files found to process."
+    if [ "$binary_files_skipped" -gt 0 ]; then
+        message+=" ($binary_files_skipped binary file(s) were ignored)"
+    fi
+    yad --error --text="$message Exiting." --width=400
     exit 1
 fi
 
@@ -142,7 +178,7 @@ get_language() {
         *.kt) echo "kotlin" ;;
         *.swift) echo "swift" ;;
         # Add more extensions as needed
-        *) echo "" ;; # Default to no language hint, or "text"
+        *) echo "" ;; # Default to no language hint
     esac
 }
 
@@ -150,48 +186,37 @@ get_language() {
 for full_path in "${final_files_to_process[@]}"; do
     # Determine the path to display in the clipboard content
     item_for_display=""
-    # Try to make it relative to the initial $directory
     if [[ "$full_path" == "$directory"/* ]]; then
         item_for_display="${full_path#"$directory/"}"
-    elif [ "$full_path" == "$directory" ]; then # Should not happen for files, but as a guard
+    elif [ "$full_path" == "$directory" ]; then
         item_for_display="."
     fi
 
-    # If not made relative (i.e., not under $directory, or $directory was / and path is /foo)
-    # or if it's an absolute path resulting from the above
     if [ -z "$item_for_display" ] || [[ "$item_for_display" == /* ]]; then
-        # Try to make it relative to the Current Working Directory ($PWD)
         item_for_display_candidate=$(realpath --relative-to="$PWD" "$full_path" 2>/dev/null)
         if [ $? -eq 0 ] && [[ "$item_for_display_candidate" != /* ]] && [[ "$item_for_display_candidate" != "" ]]; then
             item_for_display="$item_for_display_candidate"
         else
-            # Fallback to basename if not relative to PWD or realpath failed
             item_for_display=$(basename "$full_path")
         fi
     fi
-    # Final fallback if item_for_display is somehow empty
     [ -z "$item_for_display" ] && item_for_display="$full_path"
 
 
     language=$(get_language "$full_path")
-    # Append file path, language-tagged code block, and its content
-    # Using literal \n here, which will be interpreted by "echo -ne" later
     clipboard_content+="$item_for_display\n\`\`\`$language\n"
-    if [ -r "$full_path" ]; then
-        # Preserve shebang if present and then cat the rest, or just cat
-        # This is complex for a general script; for now, simple cat is fine.
-        clipboard_content+="$(cat "$full_path")"
-    else
-        clipboard_content+="[Error: Could not read file $full_path]"
-    fi
+    clipboard_content+="$(cat "$full_path")"
     clipboard_content+="\n\`\`\`\n\n"
 done
 
 # Copy the content to the clipboard using xclip
-# Using echo -ne to interpret \n sequences in $clipboard_content and prevent extra trailing newline
-if echo -ne "$clipboard_content" | xclip -selection clipboard -i; then
+if echo -n "$clipboard_content" | sed 's/\\n/\n/g' | xclip -selection clipboard -i; then
     # Notify the user that the content is copied
-    yad --info --text="The content of selected file(s) has been copied to the clipboard." --width=450 --timeout=3 --no-buttons &
+    final_message="The content of ${#final_files_to_process[@]} text file(s) has been copied to the clipboard."
+    if [ "$binary_files_skipped" -gt 0 ]; then
+        final_message+="\n\nNote: $binary_files_skipped binary file(s) were ignored."
+    fi
+    yad --info --text="$final_message" --width=450 --timeout=5 --no-buttons &
 else
     yad --error --text="Failed to copy to clipboard. Is xclip installed and configured?" --width=450
     exit 1
