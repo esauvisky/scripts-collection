@@ -123,7 +123,7 @@ def show_selection_dialog(options):
     return selected_option
 
 def main():
-    wx.App(False)  # Initialize the wx App
+    app = wx.App(False)  # Initialize the wx App
 
     # Read data from the clipboard using pyperclip
     clipboard = pyperclip.paste().strip()
