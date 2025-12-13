@@ -33,7 +33,8 @@ final_files_to_process=()
 binary_files_skipped=0
 
 # --- NEW FUNCTION TO CHECK FOR TEXT FILES ---
-# Uses the 'file' command to check the MIME type.
+# Uses the 'file' command to check the MIME type. It's expanded to recognize
+# common script/data formats that are not strictly 'text/*'.
 # Returns 0 (true) if the file is a text file, 1 (false) otherwise.
 is_text_file() {
     local file_path="$1"
@@ -42,12 +43,32 @@ is_text_file() {
         return 1
     fi
 
-    # Check if the MIME type starts with "text/"
-    if [[ $(file -b --mime-type "$file_path") == text/* ]]; then
-        return 0
-    else
-        return 1
-    fi
+    local mime_type
+    mime_type=$(file -b --mime-type "$file_path")
+
+    # Check for various text-based MIME types
+    case "$mime_type" in
+        text/*|application/json|application/javascript|application/xml|application/x-sh|application/x-shellscript|inode/x-empty)
+            # This covers:
+            # - All standard text files (text/plain, text/html, text/css, etc.)
+            # - JSON, JavaScript, XML files
+            # - Shell scripts (some systems report application/x-sh)
+            # - Empty files (which are safe to process)
+            return 0
+            ;;
+        application/octet-stream)
+            # Fallback check: If 'file' gives a generic binary type,
+            # check for a shebang. If it has one, it's a script and therefore text.
+            if [[ $(head -n 1 "$file_path") == \#!* ]]; then
+                return 0
+            fi
+            return 1
+            ;;
+        *)
+            # Any other MIME type is considered binary
+            return 1
+            ;;
+    esac
 }
 # --- END OF NEW FUNCTION ---
 
