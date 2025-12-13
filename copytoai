@@ -1,246 +1,195 @@
-#!/bin/bash
+#!/usr/bin/env python3
+import os
+import sys
+import tkinter as tk
+from tkinter import filedialog, messagebox
 
-# Check if arguments are passed
-if [ $# -gt 0 ]; then
-    args=("$@")
-    use_args=true
-else
-    use_args=false
-fi
+# --- CONFIGURATION ---
 
-# Ask the user for a directory to search in with a default value of the current directory
-directory=$(yad --entry --title="Base Directory" \
-    --text="Enter the base directory for operations or starting point for selection:" \
-    --entry-text="$PWD" --width=500)
-
-# If the user cancels or enters nothing, exit
-if [ $? -ne 0 ] || [ -z "$directory" ]; then
-    yad --info --text="Operation canceled or no directory entered." --width=300 --timeout=3 --no-buttons &
-    exit 1
-fi
-
-# Ensure the directory exists
-if [ ! -d "$directory" ]; then
-    yad --error --text="Directory '$directory' does not exist. Exiting." --width=400
-    exit 1
-fi
-# Convert to absolute path to avoid issues later
-directory=$(realpath "$directory")
-
-
-# This array will hold the absolute paths of all individual text files to be processed
-final_files_to_process=()
-binary_files_skipped=0
-
-# --- NEW FUNCTION TO CHECK FOR TEXT FILES ---
-# Uses the 'file' command to check the MIME type. It's expanded to recognize
-# common script/data formats that are not strictly 'text/*'.
-# Returns 0 (true) if the file is a text file, 1 (false) otherwise.
-is_text_file() {
-    local file_path="$1"
-    # Ensure file exists and is readable before checking
-    if [ ! -f "$file_path" ] || [ ! -r "$file_path" ]; then
-        return 1
-    fi
-
-    local mime_type
-    mime_type=$(file -b --mime-type "$file_path")
-
-    # Check for various text-based MIME types
-    case "$mime_type" in
-        text/*|application/json|application/javascript|application/xml|application/x-sh|application/x-shellscript|inode/x-empty)
-            # This covers:
-            # - All standard text files (text/plain, text/html, text/css, etc.)
-            # - JSON, JavaScript, XML files
-            # - Shell scripts (some systems report application/x-sh)
-            # - Empty files (which are safe to process)
-            return 0
-            ;;
-        application/octet-stream)
-            # Fallback check: If 'file' gives a generic binary type,
-            # check for a shebang. If it has one, it's a script and therefore text.
-            if [[ $(head -n 1 "$file_path") == \#!* ]]; then
-                return 0
-            fi
-            return 1
-            ;;
-        *)
-            # Any other MIME type is considered binary
-            return 1
-            ;;
-    esac
-}
-# --- END OF NEW FUNCTION ---
-
-
-if $use_args; then
-    # Process the command-line arguments (assumed relative to $directory)
-    for arg in "${args[@]}"; do
-        # Construct full path from base directory and argument
-        if [[ "$arg" == /* ]]; then
-            full_path_arg="$arg"
-        else
-            full_path_arg="$directory/$arg"
-        fi
-        full_path_arg=$(realpath -m "$full_path_arg") # Resolve ., .. and //
-
-        if [ ! -e "$full_path_arg" ]; then
-            yad --error --text="The item '$arg' (resolved to '$full_path_arg') does not exist." --width=500
-            exit 1
-        fi
-
-        if [ -d "$full_path_arg" ]; then
-            # Argument is a directory, find all files within it
-            while IFS= read -r -d $'\0' found_file; do
-                if is_text_file "$found_file"; then
-                    final_files_to_process+=("$found_file")
-                else
-                    ((binary_files_skipped++))
-                fi
-            done < <(find "$full_path_arg" -type f ! -path "*/.git/*" -print0)
-        elif [ -f "$full_path_arg" ]; then
-            # Argument is a file, check if it's text
-            if is_text_file "$full_path_arg"; then
-                final_files_to_process+=("$full_path_arg")
-            else
-                ((binary_files_skipped++))
-            fi
-        else
-            yad --error --text="The item '$arg' (resolved to '$full_path_arg') is not a regular file or directory." --width=500
-            exit 1
-        fi
-    done
-else
-    # No arguments: Use yad --file for interactive selection
-    selected_paths_raw=$(yad --file --multiple \
-        --title="Select Files and/or Directories" \
-        --text="Select files or entire directories. Binary files will be ignored." \
-        --filename="$directory/" --separator=$'\n' --width=800 --height=600)
-
-    # Check if the user canceled or selected nothing
-    if [ $? -ne 0 ] || [ -z "$selected_paths_raw" ]; then
-        yad --info --text="Operation canceled or no selection made." --width=300 --timeout=3 --no-buttons &
-        exit 1
-    fi
-
-    IFS=$'\n' # Set Internal Field Separator to newline for the loop below
-    for selected_path in $selected_paths_raw; do
-        if [ -z "$selected_path" ]; then
-            continue
-        fi
-
-        if [ -d "$selected_path" ]; then
-            # It's a directory, find all files, filtering for text files
-            while IFS= read -r -d $'\0' file_in_dir; do
-                if is_text_file "$file_in_dir"; then
-                    final_files_to_process+=("$file_in_dir")
-                else
-                    ((binary_files_skipped++))
-                fi
-            done < <(find "$selected_path" -type f ! -path "*/.git/*" -print0)
-        elif [ -f "$selected_path" ]; then
-            # It's a file, check if it's text before adding
-            if is_text_file "$selected_path"; then
-                final_files_to_process+=("$selected_path")
-            else
-                ((binary_files_skipped++))
-            fi
-        else
-            yad --warning --text="Skipping unrecognized or inaccessible item: $selected_path" --width=500
-        fi
-    done
-    unset IFS # Reset IFS to default
-fi
-
-
-# Check if any file was ultimately selected/found to process
-if [ ${#final_files_to_process[@]} -eq 0 ]; then
-    message="No text files found to process."
-    if [ "$binary_files_skipped" -gt 0 ]; then
-        message+=" ($binary_files_skipped binary file(s) were ignored)"
-    fi
-    yad --error --text="$message Exiting." --width=400
-    exit 1
-fi
-
-# Sort and remove duplicates
-IFS=$'\n' readarray -t final_files_to_process < <(printf "%s\n" "${final_files_to_process[@]}" | sort -u)
-unset IFS
-
-# Initialize the string to be copied to the clipboard
-clipboard_content=""
-
-# Function to get the language identifier based on the file extension
-get_language() {
-    local filename=$(basename -- "$1")
-    case "$filename" in
-        *.sh) echo "bash" ;;
-        *.py) echo "python" ;;
-        *.js) echo "javascript" ;;
-        *.java) echo "java" ;;
-        *.c) echo "c" ;;
-        *.cpp) echo "cpp" ;;
-        *.h) echo "c" ;;
-        *.hpp) echo "cpp" ;;
-        *.html) echo "html" ;;
-        *.css) echo "css" ;;
-        *.json) echo "json" ;;
-        *.xml) echo "xml" ;;
-        *.php) echo "php" ;;
-        *.rb) echo "ruby" ;;
-        *.go) echo "go" ;;
-        *.md) echo "markdown" ;;
-        *.txt) echo "text" ;;
-        *.log) echo "log" ;;
-        *.sql) echo "sql" ;;
-        *.yaml|*.yml) echo "yaml" ;;
-        *.ts) echo "typescript" ;;
-        *.rs) echo "rust" ;;
-        *.kt) echo "kotlin" ;;
-        *.swift) echo "swift" ;;
-        # Add more extensions as needed
-        *) echo "" ;; # Default to no language hint
-    esac
+# Directories to ignore
+SKIP_DIRS = {
+    '.git', '__pycache__', 'node_modules', '.idea', '.vscode',
+    'venv', 'env', 'build', 'dist', 'target', '.next', '.nuxt'
 }
 
-# Loop through each final file path
-for full_path in "${final_files_to_process[@]}"; do
-    # Determine the path to display in the clipboard content
-    item_for_display=""
-    if [[ "$full_path" == "$directory"/* ]]; then
-        item_for_display="${full_path#"$directory/"}"
-    elif [ "$full_path" == "$directory" ]; then
-        item_for_display="."
-    fi
+# Specific filenames to ignore (usually huge auto-generated files)
+SKIP_FILES = {
+    'package-lock.json', 'yarn.lock', 'pnpm-lock.yaml',
+    'Cargo.lock', 'composer.lock', '.DS_Store', 'Thumbs.db'
+}
 
-    if [ -z "$item_for_display" ] || [[ "$item_for_display" == /* ]]; then
-        item_for_display_candidate=$(realpath --relative-to="$PWD" "$full_path" 2>/dev/null)
-        if [ $? -eq 0 ] && [[ "$item_for_display_candidate" != /* ]] && [[ "$item_for_display_candidate" != "" ]]; then
-            item_for_display="$item_for_display_candidate"
-        else
-            item_for_display=$(basename "$full_path")
-        fi
-    fi
-    [ -z "$item_for_display" ] && item_for_display="$full_path"
+# Extensions to ignore (binary-ish or usually irrelevant assets)
+SKIP_EXTENSIONS = {
+    '.png', '.jpg', '.jpeg', '.gif', '.ico', '.svg',
+    '.woff', '.woff2', '.ttf', '.eot', '.mp4', '.mp3',
+    '.zip', '.tar', '.gz', '.pyc', '.exe', '.dll', '.so', '.dylib'
+}
 
+# --- HELPER FUNCTIONS ---
 
-    language=$(get_language "$full_path")
-    clipboard_content+="$item_for_display\n\`\`\`$language\n"
-    clipboard_content+="$(cat "$full_path")"
-    clipboard_content+="\n\`\`\`\n\n"
-done
+def is_text_file(file_path):
+    """
+    Determines if a file is text or binary.
+    Checks extension first, then checks for null bytes.
+    """
+    filename = os.path.basename(file_path)
+    _, ext = os.path.splitext(filename)
 
-# Copy the content to the clipboard using xclip
-if echo -n "$clipboard_content" | sed 's/\\n/\n/g' | xclip -selection clipboard -i; then
-    # Notify the user that the content is copied
-    final_message="The content of ${#final_files_to_process[@]} text file(s) has been copied to the clipboard."
-    if [ "$binary_files_skipped" -gt 0 ]; then
-        final_message+="\n\nNote: $binary_files_skipped binary file(s) were ignored."
-    fi
-    yad --info --text="$final_message" --width=450 --timeout=5 --no-buttons &
-else
-    yad --error --text="Failed to copy to clipboard. Is xclip installed and configured?" --width=450
-    exit 1
-fi
+    if filename in SKIP_FILES:
+        return False
+    if ext.lower() in SKIP_EXTENSIONS:
+        return False
 
-exit 0
+    try:
+        # Read the first 8KB to check for binary characteristics
+        with open(file_path, 'rb') as f:
+            chunk = f.read(8192)
+        if b'\0' in chunk:
+            return False
+        return True
+    except Exception:
+        return False
+
+def get_language(filename):
+    """Returns the markdown language tag based on file extension."""
+    ext = os.path.splitext(filename)[1].lower()
+    mapping = {
+        '.sh': 'bash', '.py': 'python', '.js': 'javascript', '.jsx': 'javascript',
+        '.java': 'java', '.c': 'c', '.cpp': 'cpp', '.h': 'c', '.hpp': 'cpp',
+        '.html': 'html', '.css': 'css', '.scss': 'css', '.json': 'json',
+        '.xml': 'xml', '.php': 'php', '.rb': 'ruby', '.go': 'go', '.md': 'markdown',
+        '.txt': 'text', '.sql': 'sql', '.yaml': 'yaml', '.yml': 'yaml',
+        '.ts': 'typescript', '.tsx': 'typescript', '.rs': 'rust',
+        '.kt': 'kotlin', '.swift': 'swift', '.bat': 'batch', '.ps1': 'powershell',
+        '.lua': 'lua', '.r': 'r', '.dart': 'dart', '.toml': 'toml'
+    }
+    return mapping.get(ext, '')
+
+def get_files_recursive(paths):
+    text_files = []
+    skipped_count = 0
+
+    paths = [os.path.abspath(p) for p in paths]
+
+    for path in paths:
+        if os.path.isfile(path):
+            if is_text_file(path):
+                text_files.append(path)
+            else:
+                skipped_count += 1
+        elif os.path.isdir(path):
+            for root, dirs, files in os.walk(path):
+                # Modify dirs in-place to skip specific folders
+                dirs[:] = [d for d in dirs if d not in SKIP_DIRS]
+
+                for f in files:
+                    full_path = os.path.join(root, f)
+                    if is_text_file(full_path):
+                        text_files.append(full_path)
+                    else:
+                        skipped_count += 1
+
+    return sorted(list(set(text_files))), skipped_count
+
+def copy_to_clipboard(root, text):
+    root.clipboard_clear()
+    root.clipboard_append(text)
+    root.update()
+
+# --- MAIN LOGIC ---
+
+def main():
+    root = tk.Tk()
+    root.withdraw() # Hide the main window
+
+    input_paths = []
+    base_directory = os.getcwd()
+
+    # 1. Input Handling
+    if len(sys.argv) > 1:
+        input_paths = sys.argv[1:]
+    else:
+        choice = messagebox.askyesno(
+            "Select Source",
+            "Yes = Select a Folder (Recursive)\nNo  = Select Specific File(s)"
+        )
+        if choice:
+            selected_dir = filedialog.askdirectory(initialdir=base_directory)
+            if selected_dir:
+                input_paths = [selected_dir]
+                base_directory = selected_dir
+        else:
+            selected_files = filedialog.askopenfilenames(initialdir=base_directory)
+            if selected_files:
+                input_paths = list(selected_files)
+                base_directory = os.path.dirname(selected_files[0])
+
+    if not input_paths:
+        return
+
+    # 2. Processing
+    final_files, skipped_binary = get_files_recursive(input_paths)
+
+    if not final_files:
+        messagebox.showerror("Error", "No text files found to process.")
+        return
+
+    # 3. formatting for LLM Parsing
+    clipboard_parts = []
+
+    # A. PROJECT CONTEXT (File Tree)
+    # This helps the LLM understand relationships between files
+    clipboard_parts.append("# Project Context")
+    clipboard_parts.append(" The following files are included in this context:\n")
+    for file_path in final_files:
+        try:
+            rel_path = os.path.relpath(file_path, base_directory)
+        except ValueError:
+            rel_path = file_path
+        clipboard_parts.append(f"- {rel_path}")
+    clipboard_parts.append("\n---\n") # Separator
+
+    # B. FILE CONTENTS
+    for file_path in final_files:
+        try:
+            # Determine display path
+            try:
+                display_path = os.path.relpath(file_path, base_directory)
+            except ValueError:
+                display_path = file_path
+
+            language = get_language(file_path)
+
+            with open(file_path, 'r', encoding='utf-8', errors='replace') as f:
+                content = f.read()
+
+            # FORMATTING LOGIC
+            # 1. '### ' header (Markdown Heading 3)
+            # 2. Code block with language
+            # 3. Horizontal rule at the end to create a clean cut
+            entry = (
+                f"### {display_path}\n"
+                f"```{language}\n"
+                f"{content}\n"
+                f"```\n"
+            )
+            clipboard_parts.append(entry)
+
+        except Exception as e:
+            print(f"Error reading {file_path}: {e}")
+
+    final_text = "\n".join(clipboard_parts)
+
+    # 4. Copy and Finish
+    copy_to_clipboard(root, final_text)
+
+    msg = f"Copied {len(final_files)} file(s) to clipboard."
+    if skipped_binary > 0:
+        msg += f"\n(Skipped {skipped_binary} binary/lock files)"
+
+    # Auto-close the script after showing the message
+    messagebox.showinfo("Success", msg)
+    root.destroy()
+
+if __name__ == "__main__":
+    main()
